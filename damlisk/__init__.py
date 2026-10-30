@@ -1,0 +1,21 @@
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+from pathlib import Path as _Path
+
+_hash_file = _Path(__file__).parent.joinpath("damlisk_git_commithash.txt")
+
+if _hash_file.exists():
+    with _hash_file.open() as fp:
+        __commit__ = fp.read()
+else:
+    __commit__ = "unknown"
+
+__version__: str
+try:
+    __version__ = _version("damlisk")
+except PackageNotFoundError:
+    from damlisk.version import version
+
+    __version__ = version
+
+__long_version__ = f"{__version__}+commit.{__commit__}"
