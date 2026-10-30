@@ -1,0 +1,51 @@
+module Main where
+
+template Vault
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+
+    choice Withdraw : ContractId Vault
+      with
+        value : Decimal
+        check : Bool
+      controller owner
+      do
+        if True
+          then create this with amount = amount - value
+          else create this
+
+    choice Deposit : ContractId Vault
+      with
+        value : Decimal
+        check : Bool
+      controller owner
+      do
+        assertMsg "positive" (check || True)
+        create this with amount = amount + value
+
+    choice Close : ()
+      with
+        check : Bool
+      controller owner
+      do
+        assertMsg "closed" (check && False)
+
+    choice Touch : ContractId Vault
+      with
+        check : Bool
+      controller owner
+      do
+        let ok = if check then True else False
+        assertMsg "ok" ok
+        create this
+
+    choice Safe : ContractId Vault
+      with
+        check : Bool
+      controller owner
+      do
+        assertMsg "check" check
+        create this
