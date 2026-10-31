@@ -85,8 +85,14 @@ def scan_cmd(
     """Run detectors over the main package of DAR_PATH."""
     detectors = select_detectors(detect, exclude)
     index = PackageIndex(_load(dar_path, traceback))
-    findings = [f for det in detectors for f in det(index).detect()]
-    click.echo(render_json(findings, pretty) if as_json or pretty else render_text(findings))
+    findings: list[Finding] = []
+    for det in detectors:
+        found = det(index).detect()
+        findings.extend(found)
+    if as_json or pretty:
+        click.echo(render_json(findings, pretty))
+    else:
+        click.echo(render_text(findings))
     if _fails(findings, fail_on):
         sys.exit(1)
 
@@ -112,7 +118,8 @@ def info_cmd(dar_path: Path, traceback: bool) -> None:
     )
     for label, value in rows:
         click.echo(f"{label}: {value}")
-    for pkg in sorted(dar.packages, key=lambda p: (p.name, p.version)):
+    packages = sorted(dar.packages, key=lambda p: (p.name, p.version))
+    for pkg in packages:
         click.echo(f"  {pkg.name} {pkg.version} (LF {pkg.lf_ver})")
 
 

@@ -20,6 +20,7 @@ damlisk list-detectors
 |---|---|---|---|
 | [`boolean-cst`](#boolean-cst) | Medium | Medium | Boolean constants used as conditions |
 | [`boolean-equal`](#boolean-equal) | Informational | High | Comparison to `True` / `False` |
+| [`controller-from-argument`](#controller-from-argument) | High | Medium | Consuming choice controlled only by an unchecked argument party |
 
 ### boolean-cst
 
@@ -132,3 +133,75 @@ $ damlisk scan examples/vulnerable/boolean-equal/boolean-equal.dar --detect bool
 
 **Limitations:** like `boolean-cst`, the reported line is the enclosing `choice` (or `ensure`)
 line, because Daml-LF 2.1 drops expression locations.
+
+### controller-from-argument
+
+**Controller taken from the choice argument** (Slither `tx-origin`). It reports a consuming
+template choice where:
+
+1. every controller comes from a choice argument field (`controller requester`,
+   `controller request.party`), with no contract party next to it;
+2. the choice body never compares that field (`==`, `/=`, `elem`, `notElem`) against anything.
+
+**Impact:** the ledger only checks that the controller authorized the exercise. If the
+controller is whatever party the caller passes in, every party that can see the contract
+(observers, parties it was divulged to) can exercise the choice as itself. Because the choice
+is consuming, they can archive the contract and, with the signatories' authority, create a new
+one, e.g. transfer an asset to themselves.
+
+| Choice shape | Reported | Why |
+|---|---|---|
+| `controller requester` with no check | yes | anyone who sees the contract can exercise it |
+| `controller request.party` with no check | yes | same, through a nested record |
+| `controller owner, splitter` | no | `owner` must authorize too |
+| `controller claimer` + `assertMsg "owner only" (claimer == owner)` | no | the argument is checked |
+| `nonconsuming choice … controller viewer` | no | the contract is not archived; borrowed authority is covered by `delegated-authority-leak` |
+| interface choice | no | the check belongs to the interface implementations |
+
+**Example** (`examples/vulnerable/controller-from-argument/daml/Main.daml`):
+
+```haskell
+template Asset
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    choice Transfer : ContractId Asset
+      with
+        requester : Party
+        newOwner : Party
+      controller requester
+      do create this with owner = newOwner
+```
+
+Any observer of `Asset` can exercise `Transfer` with `requester = itself` and
+`newOwner = itself`, and the new contract is still signed by `issuer` and `owner`.
+
+```
+$ damlisk scan examples/vulnerable/controller-from-argument/controller-from-argument.dar
+[High] controller-from-argument Main.daml:30
+    Main:Asset.Approve: controlled by unchecked argument `request`
+[High] controller-from-argument Main.daml:16
+    Main:Asset.Transfer: controlled by unchecked argument `requester`
+2 finding(s).
+```
+
+**How it works:** damlc moves controllers and choice bodies into generated helpers
+(`$$sc_Asset_3 this arg`). The detector follows the choice argument through those helpers,
+`let` aliases and `do` bindings, and records which argument fields reach the controllers and
+which reach a comparison.
+
+**Splice:** Splice uses argument controllers often, but the consuming ones either add a contract
+party as co-controller (`controller sender, walletProvider`) or check the argument
+(``require … (p `elem` [receiver, provider])``), so nothing is reported.
+
+**Why Medium confidence:** any comparison of the argument counts as a check, even one that does
+not restrict who may exercise (for example `requester /= newOwner`). A check done another way,
+such as fetching a contract that has the argument party as signatory, is not recognised.
+
+**Recommendation:** control the choice by a contract party (`controller owner`), add a contract
+party as co-controller, or check the argument against the contract
+(`assertMsg "owner only" (requester == owner)`).

@@ -25,8 +25,13 @@ class Manifest:
 
     @classmethod
     def parse(cls, raw: str) -> "Manifest":
-        pairs = (line.partition(":") for line in re.sub(r"\r?\n ", "", raw).splitlines())
-        fields = {key.strip(): value.strip() for key, sep, value in pairs if sep}
+        text = re.sub(r"\r?\n ", "", raw)
+        lines = text.splitlines()
+        fields: dict[str, str] = {}
+        for line in lines:
+            key, sep, value = line.partition(":")
+            if sep:
+                fields[key.strip()] = value.strip()
         return cls(fields.get("Main-Dalf", ""), fields.get("Sdk-Version"))
 
     @property

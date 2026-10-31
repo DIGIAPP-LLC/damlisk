@@ -2,29 +2,34 @@ from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.detectors.abstract_detector import AbstractDetector
 from damlisk.lf.builtins import BOOLS, bool_const
-from damlisk.lf.walk import walk
+from damlisk.lf.tree import find_all
 from damlisk.output.finding import Confidence, Finding, Impact
 
 
 def branch(case: lf.Case, con: lf.PrimCon) -> str | None:
     for alt in case.alts:
-        if alt._Sum_name == "default" or (alt._Sum_name == "prim_con" and alt._Sum_value == con):
+        if alt.default is not None or alt.prim_con == con:
             return bool_const(alt.body)
     return None
+
+
+def matches_bool(case: lf.Case) -> bool:
+    return any(alt.prim_con in BOOLS for alt in case.alts)
 
 
 def misuse(case: lf.Case) -> str | None:
     scrut = bool_const(case.scrut)
     if scrut is not None:
         return f"condition is always {scrut}"
-    if not any(alt._Sum_name == "prim_con" and alt._Sum_value in BOOLS for alt in case.alts):
+    if not matches_bool(case):
         return None
-    pair = (branch(case, lf.PrimCon.CON_TRUE), branch(case, lf.PrimCon.CON_FALSE))
-    if None in pair:
+    if_true = branch(case, lf.PrimCon.CON_TRUE)
+    if_false = branch(case, lf.PrimCon.CON_FALSE)
+    if if_true is None or if_false is None:
         return None
-    if pair[0] == pair[1]:
-        return f"result is always {pair[0]} regardless of the condition"
-    if pair == ("True", "False"):
+    if if_true == if_false:
+        return f"result is always {if_true} regardless of the condition"
+    if if_true == "True":
         return "conditional returns its own condition (if c then True else False)"
     return "conditional negates its condition (if c then False else True)"
 
@@ -58,9 +63,12 @@ class BooleanConstant(AbstractDetector):
     )
 
     def _detect(self) -> list[Finding]:
-        return [
-            self.finding(body, f"{body.owner}: {message}", visit.loc)
-            for body in self.index.bodies()
-            for visit in walk(body.expr, body.loc)
-            if isinstance(visit.value, lf.Case) and (message := misuse(visit.value))
-        ]
+        findings = []
+        bodies = self.index.bodies()
+        for body in bodies:
+            cases = find_all(body.expr, lf.Case, body.loc)
+            for case in cases:
+                message = misuse(case.node)
+                if message:
+                    findings.append(self.finding(body.owner, f"{body.owner}: {message}", case.loc))
+        return findings

@@ -8,7 +8,7 @@ from dazl.damlast.util import module_local_name, package_ref
 
 from damlisk.lf.dar import Dar, LfPackage
 from damlisk.lf.lf2 import DefException, Implements
-from damlisk.lf.walk import walk
+from damlisk.lf.tree import find_all
 
 TMPL_ATTRS = ("precond", "signatories", "observers")
 KEY_ATTRS = ("complex_key", "maintainers")
@@ -48,6 +48,18 @@ def fields(
 
 
 @dataclass(frozen=True)
+class ChoiceDecl:
+    owner: str
+    choice: lf.TemplateChoice
+    param: str
+    iface: bool
+    loc: lf.Location | None
+
+    def bodies(self) -> Iterator[Body]:
+        return fields(self.owner, self.choice, CH_ATTRS, self.loc)
+
+
+@dataclass(frozen=True)
 class Scope:
     pkg: LfPackage
     module: lf.Module
@@ -68,25 +80,44 @@ class Scope:
                 return lf.Location(self.ref, rng)
         return None
 
+    def template_head(self, tmpl: lf.DefTemplate) -> lf.Location | None:
+        return known(tmpl.location) or self.locate(decl_re("template", tmpl.tycon.segments[-1]))
+
     def decls(self) -> Iterator[Body]:
         for tmpl in self.module.templates:
             owner = self.qual(*tmpl.tycon.segments)
-            head = known(tmpl.location) or self.locate(decl_re("template", tmpl.tycon.segments[-1]))
+            head = self.template_head(tmpl)
             yield from fields(owner, tmpl, TMPL_ATTRS, head)
             if tmpl.key is not None:
                 yield from fields(owner, tmpl.key, KEY_ATTRS, head)
-            yield from self.choices(owner, tmpl.choices, head)
+            choices = self.choices_of(tmpl, head)
+            for decl in choices:
+                yield from decl.bodies()
         for iface in self.module.interfaces:
-            head = self.locate(decl_re("interface", iface.name.segments[-1]))
-            yield from self.choices(self.qual(*iface.name.segments), iface.choices, head)
+            choices = self.choices_of(iface, self.iface_head(iface))
+            for decl in choices:
+                yield from decl.bodies()
 
-    def choices(
-        self, owner: str, choices: Iterable[lf.TemplateChoice], head: lf.Location | None
-    ) -> Iterator[Body]:
+    def iface_head(self, iface: lf.DefInterface) -> lf.Location | None:
+        return self.locate(decl_re("interface", iface.name.segments[-1]))
+
+    def choices(self) -> Iterator[ChoiceDecl]:
+        for tmpl in self.module.templates:
+            yield from self.choices_of(tmpl, self.template_head(tmpl))
+        for iface in self.module.interfaces:
+            yield from self.choices_of(iface, self.iface_head(iface))
+
+    def choices_of(
+        self, decl: lf.DefTemplate | lf.DefInterface, head: lf.Location | None
+    ) -> Iterator[ChoiceDecl]:
+        if isinstance(decl, lf.DefInterface):
+            owner, is_iface = self.qual(*decl.name.segments), True
+        else:
+            owner, is_iface = self.qual(*decl.tycon.segments), False
         first = head.range.start_line if head else 0
-        for ch in choices:
+        for ch in decl.choices:
             loc = known(ch.location) or self.locate(decl_re("choice", ch.name), first) or head
-            yield from fields(f"{owner}.{ch.name}", ch, CH_ATTRS, loc)
+            yield ChoiceDecl(f"{owner}.{ch.name}", ch, decl.param, is_iface, loc)
 
     def values(self, alias: dict[lf.ValName, Body]) -> Iterator[Body]:
         for dv in self.module.values:
@@ -109,7 +140,8 @@ class PackageIndex:
         self.impls: dict[lf.TypeConName, list[Implements]] = {}
         self.exceptions: dict[lf.TypeConName, DefException] = {}
         for pkg in dar.packages:
-            for scope in self.scopes(pkg):
+            scopes = self.scopes(pkg)
+            for scope in scopes:
                 ref, mod = scope.ref, scope.module
                 self.values.update((lf.ValName(ref, v.name_with_type.name), v) for v in mod.values)
                 self.templates.update(
@@ -127,10 +159,18 @@ class PackageIndex:
             text = self.dar.sources.get(str(module.name), "") if pkg is self.dar.main else ""
             yield Scope(pkg, module, tuple(text.splitlines()))
 
+    def choices(self, pkg: LfPackage | None = None) -> Iterator[ChoiceDecl]:
+        scopes = self.scopes(pkg or self.dar.main)
+        for scope in scopes:
+            yield from scope.choices()
+
     def bodies(self, pkg: LfPackage | None = None) -> Iterator[Body]:
         pkg = pkg or self.dar.main
         scopes = list(self.scopes(pkg))
-        decls = [body for scope in scopes for body in scope.decls()]
+        decls: list[Body] = []
+        for scope in scopes:
+            found = scope.decls()
+            decls.extend(found)
         alias = aliases(decls, pkg, self.values)
         yield from decls
         for scope in scopes:
@@ -138,7 +178,9 @@ class PackageIndex:
         for impl in pkg.extras.implements:
             owner = f"{impl.template}@{impl.interface}"
             yield Body(f"{owner}.view", impl.view, impl.location)
-            yield from (Body(f"{owner}.{n}", e, impl.location) for n, e in impl.methods.items())
+            methods = impl.methods.items()
+            for name, expr in methods:
+                yield Body(f"{owner}.{name}", expr, impl.location)
         for exc in pkg.extras.exceptions:
             yield Body(f"{exc.name}.message", exc.message, exc.location)
 
@@ -150,9 +192,10 @@ def aliases(
     todo = deque(decls)
     while todo:
         body = todo.popleft()
-        for visit in walk(body.expr, body.loc):
-            name = visit.value
-            if not isinstance(name, lf.ValName) or name in out or package_ref(name) != pkg.pkg_id:
+        refs = find_all(body.expr, lf.ValName)
+        for ref in refs:
+            name = ref.node
+            if name in out or package_ref(name) != pkg.pkg_id:
                 continue
             if module_local_name(name).startswith("$") and name in values:
                 out[name] = body

@@ -2,7 +2,7 @@ import pytest
 from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.index import decl_re, known, value_re
-from damlisk.lf.walk import walk
+from damlisk.lf.tree import find_all
 
 
 def test_amulet_index_covers_all_packages(amulet_index):
@@ -21,8 +21,7 @@ def test_amulet_choice_values_are_attributed_to_choices(amulet_index):
 
 def test_index_resolves_values_referenced_by_choices(amulet_index):
     body = next(b for b in amulet_index.bodies() if b.owner.endswith("AmuletRules_Transfer.update"))
-    refs = [v.value for v in walk(body.expr)]
-    names = [r for r in refs if isinstance(r, lf.ValName)]
+    names = [ref.node for ref in find_all(body.expr, lf.ValName)]
 
     assert names and all(n in amulet_index.values for n in names)
 

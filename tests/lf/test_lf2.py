@@ -2,7 +2,7 @@ import pytest
 from dazl._gen.com.digitalasset.daml.lf.archive import daml_lf2_pb2 as pb
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import bool_const, demangle, lf_name
+from damlisk.lf.builtins import bool_const, demangle, is_compare, lf_name
 from damlisk.lf.lf2 import Parser23
 
 
@@ -103,3 +103,23 @@ def test_demangle(name, expected):
 )
 def test_bool_const(expr, expected):
     assert bool_const(expr) == expected
+
+
+def _val(module, name):
+    ref = lf.ModuleRef(lf.PackageRef("pkg"), lf.DottedName(segments=tuple(module.split("."))))
+    return lf.Expr(val=lf.ValName(ref, (name,)))
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (lf.Expr(builtin="EQUAL"), True),
+        (lf.Expr(ty_app=lf.Expr.TyApp(_val("DA.Internal.Prelude", "elem"), ())), True),
+        (_val("GHC.Classes", "$$dm$u002f$u003d"), True),
+        (_val("DA.Internal.Prelude", "map"), False),
+        (lf.Expr(builtin="LESS"), False),
+    ],
+    ids=["equal", "elem", "default-not-equal", "other-function", "other-builtin"],
+)
+def test_is_compare(fun, expected):
+    assert is_compare(fun) is expected

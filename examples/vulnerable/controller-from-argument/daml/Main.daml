@@ -1,0 +1,58 @@
+module Main where
+
+data Request = Request with
+    party : Party
+    note : Text
+  deriving (Eq, Show)
+
+template Asset
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    choice Transfer : ContractId Asset
+      with
+        requester : Party
+        newOwner : Party
+      controller requester
+      do create this with owner = newOwner
+
+    choice Split : ContractId Asset
+      with
+        splitter : Party
+        part : Decimal
+      controller owner, splitter
+      do create this with amount = amount - part
+
+    choice Approve : ContractId Asset
+      with
+        request : Request
+      controller request.party
+      do create this
+
+    nonconsuming choice Peek : Decimal
+      with
+        viewer : Party
+      controller viewer
+      do pure amount
+
+    choice Give : ContractId Asset
+      with
+        newOwner : Party
+      controller owner
+      do create this with owner = newOwner
+
+    choice Claim : ContractId Asset
+      with
+        claimer : Party
+      controller claimer
+      do
+        assertMsg "owner only" (claimer == owner)
+        create this with owner = claimer
+
+    choice Burn : ()
+      controller issuer, owner
+      do pure ()

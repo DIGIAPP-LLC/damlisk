@@ -3,7 +3,7 @@ from typing import ClassVar
 
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.index import Body, PackageIndex
+from damlisk.lf.index import PackageIndex
 from damlisk.output.finding import Confidence, Finding, Impact
 
 
@@ -26,13 +26,13 @@ class AbstractDetector(ABC):
     def detect(self) -> list[Finding]:
         return sorted(self._detect(), key=lambda f: (f.impact.rank, f.owner, f.line or 0))
 
-    def finding(self, body: Body, message: str, loc: lf.Location | None = None) -> Finding:
+    def finding(self, owner: str, message: str, loc: lf.Location | None) -> Finding:
         return Finding(
             check=self.ARGUMENT,
             impact=self.IMPACT,
             confidence=self.CONFIDENCE,
             message=message,
             package=self.index.dar.main.name,
-            owner=body.owner,
-            loc=loc or body.loc,
+            owner=owner,
+            loc=loc,
         )

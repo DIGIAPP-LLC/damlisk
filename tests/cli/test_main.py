@@ -4,7 +4,7 @@ import pytest
 from click.testing import CliRunner
 
 from damlisk.cli.main import cli
-from tests.conftest import AMULET_DAR, BOOL_DAR
+from tests.conftest import AMULET_DAR, BOOL_DAR, CTRL_DAR
 
 
 @pytest.mark.parametrize(
@@ -19,6 +19,7 @@ from tests.conftest import AMULET_DAR, BOOL_DAR
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),
         (["list-detectors"], 0, "boolean-equal"),
+        (["scan", str(CTRL_DAR), "--fail-on", "high"], 1, "controller-from-argument"),
         ([], 0, "Usage:"),
     ],
     ids=[
@@ -31,6 +32,7 @@ from tests.conftest import AMULET_DAR, BOOL_DAR
         "info",
         "list",
         "list-boolean-equal",
+        "fail-on-high-controller",
         "help",
     ],
 )

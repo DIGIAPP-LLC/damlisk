@@ -1,35 +1,19 @@
-import re
-
 from dazl.damlast import daml_lf_1 as lf
-from dazl.damlast.util import module_local_name, module_name
 
 from damlisk.detectors.abstract_detector import AbstractDetector
-from damlisk.lf.builtins import bool_const, demangle, lf_name
-from damlisk.lf.walk import walk
+from damlisk.lf.builtins import bool_const, eq_operator
+from damlisk.lf.tree import find_all
 from damlisk.output.finding import Confidence, Finding, Impact
-
-EQ_MODULE = "GHC.Classes"
-EQ_RE = re.compile(r"^(?:\$c)?(==|/=)\d*$")
-
-
-def operator(fun: lf.Expr) -> str | None:
-    while isinstance(tyapp := fun.ty_app, lf.Expr.TyApp):
-        fun = tyapp.expr
-    if fun.builtin is not None:
-        return "==" if lf_name(fun.builtin) == "EQUAL" else None
-    val = fun.val
-    if isinstance(val, lf.ValName) and str(module_name(val)) == EQ_MODULE:
-        match = EQ_RE.match(demangle(module_local_name(val)))
-        return match[1] if match else None
-    return None
 
 
 def misuse(app: lf.Expr.App) -> str | None:
-    op = operator(app.fun)
-    const = next((c for a in app.args if (c := bool_const(a)) is not None), None)
-    if op is None or const is None:
+    op = eq_operator(app.fun)
+    consts = [bool_const(arg) for arg in app.args if bool_const(arg) is not None]
+    if op is None or not consts:
         return None
-    fix = "x" if (op == "==") == (const == "True") else "not x"
+    const = consts[0]
+    keeps = (op == "==") == (const == "True")
+    fix = "x" if keeps else "not x"
     return f"comparison with a Boolean constant (x {op} {const}), use `{fix}`"
 
 
@@ -52,9 +36,12 @@ class BooleanEqual(AbstractDetector):
     )
 
     def _detect(self) -> list[Finding]:
-        return [
-            self.finding(body, f"{body.owner}: {message}", visit.loc)
-            for body in self.index.bodies()
-            for visit in walk(body.expr, body.loc)
-            if isinstance(visit.value, lf.Expr.App) and (message := misuse(visit.value))
-        ]
+        findings = []
+        bodies = self.index.bodies()
+        for body in bodies:
+            calls = find_all(body.expr, lf.Expr.App, body.loc)
+            for call in calls:
+                message = misuse(call.node)
+                if message:
+                    findings.append(self.finding(body.owner, f"{body.owner}: {message}", call.loc))
+        return findings
