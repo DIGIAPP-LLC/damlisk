@@ -41,15 +41,26 @@ class BooleanConstant(AbstractDetector):
     CONFIDENCE = Confidence.MEDIUM
     WIKI_TITLE = "Misuse of a Boolean constant"
     WIKI_DESCRIPTION = (
-        "Detects conditions that are Boolean constants (`if True`, `check || True`, "
-        "`check && False`) and conditionals that only return Boolean constants. damlc keeps "
-        "these in Daml-LF without a warning."
+        "Reports Boolean constants used as conditions and conditionals that only return "
+        "constants. damlc keeps them in Daml-LF without a warning, so they reach the ledger:\n"
+        "- `if True` / `if False`: one branch is dead code; the guarded path never runs.\n"
+        "- `check || True`: the guard always passes; `assertMsg`, `ensure` or a controller "
+        "check stops validating anything (authorization or balance bypass).\n"
+        "- `check && False`: the guard always fails; the choice always aborts, so the "
+        "contract can never be archived through it (locked assets, denial of service).\n"
+        "- `if check then True else False` (or the negated form): redundant code that "
+        "often hides a wrong or inverted condition."
     )
     WIKI_EXPLOIT_SCENARIO = (
         '`assertMsg "authorized" (isAdmin || True)` was left from debugging: the assertion '
-        "always passes and any controller can withdraw."
+        "always passes and any controller can withdraw any amount. A `Close` choice "
+        'guarded by `assertMsg "closed" (check && False)` always fails, so the owner can '
+        "never archive the vault."
     )
-    WIKI_RECOMMENDATION = "Remove the constant or use the intended condition."
+    WIKI_RECOMMENDATION = (
+        "Remove the constant and use the intended condition; replace "
+        "`if c then True else False` with `c` and `if c then False else True` with `not c`."
+    )
 
     def _detect(self) -> list[Finding]:
         return [
