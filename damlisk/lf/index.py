@@ -1,4 +1,5 @@
 import re
+from collections import deque
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
@@ -130,7 +131,7 @@ class PackageIndex:
         pkg = pkg or self.dar.main
         scopes = list(self.scopes(pkg))
         decls = [body for scope in scopes for body in scope.decls()]
-        alias = aliases(decls, pkg)
+        alias = aliases(decls, pkg, self.values)
         yield from decls
         for scope in scopes:
             yield from scope.values(alias)
@@ -142,12 +143,18 @@ class PackageIndex:
             yield Body(f"{exc.name}.message", exc.message, exc.location)
 
 
-def aliases(decls: Iterable[Body], pkg: LfPackage) -> dict[lf.ValName, Body]:
+def aliases(
+    decls: Iterable[Body], pkg: LfPackage, values: dict[lf.ValName, lf.DefValue]
+) -> dict[lf.ValName, Body]:
     out: dict[lf.ValName, Body] = {}
-    for body in decls:
+    todo = deque(decls)
+    while todo:
+        body = todo.popleft()
         for visit in walk(body.expr, body.loc):
             name = visit.value
-            if isinstance(name, lf.ValName) and package_ref(name) == pkg.pkg_id:
-                if module_local_name(name).startswith("$"):
-                    out.setdefault(name, body)
+            if not isinstance(name, lf.ValName) or name in out or package_ref(name) != pkg.pkg_id:
+                continue
+            if module_local_name(name).startswith("$") and name in values:
+                out[name] = body
+                todo.append(Body(body.owner, values[name].expr, body.loc))
     return out

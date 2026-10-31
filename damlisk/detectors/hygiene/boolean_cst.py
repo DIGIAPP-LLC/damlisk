@@ -1,14 +1,9 @@
 from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.detectors.abstract_detector import AbstractDetector
+from damlisk.lf.builtins import BOOLS, bool_const
 from damlisk.lf.walk import walk
 from damlisk.output.finding import Confidence, Finding, Impact
-
-BOOLS = {lf.PrimCon.CON_TRUE: "True", lf.PrimCon.CON_FALSE: "False"}
-
-
-def bool_const(expr: lf.Expr) -> str | None:
-    return BOOLS.get(expr._Sum_value) if expr._Sum_name == "prim_con" else None
 
 
 def branch(case: lf.Case, con: lf.PrimCon) -> str | None:

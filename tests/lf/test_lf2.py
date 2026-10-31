@@ -2,7 +2,7 @@ import pytest
 from dazl._gen.com.digitalasset.daml.lf.archive import daml_lf2_pb2 as pb
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import lf_name
+from damlisk.lf.builtins import bool_const, demangle, lf_name
 from damlisk.lf.lf2 import Parser23
 
 
@@ -75,3 +75,31 @@ def test_builtin_types_use_lf2_numbering(name, expected):
 )
 def test_lf_name(value, expected):
     assert lf_name(value) == expected
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("$$c$u002f$u003d20", "$c/=20"),
+        ("$u003d$u003d", "=="),
+        ("$$$$sc_Ticket_8", "$$sc_Ticket_8"),
+        ("plain", "plain"),
+    ],
+    ids=["instance-method", "class-method", "double-dollar", "plain"],
+)
+def test_demangle(name, expected):
+    assert demangle(name) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (lf.Expr(prim_con=lf.PrimCon.CON_TRUE), "True"),
+        (lf.Expr(prim_con=lf.PrimCon.CON_FALSE), "False"),
+        (lf.Expr(prim_con=lf.PrimCon.CON_UNIT), None),
+        (lf.Expr(var="x"), None),
+    ],
+    ids=["true", "false", "unit", "var"],
+)
+def test_bool_const(expr, expected):
+    assert bool_const(expr) == expected

@@ -18,6 +18,7 @@ from tests.conftest import AMULET_DAR, BOOL_DAR
         (["scan", str(AMULET_DAR)], 0, "No findings."),
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),
+        (["list-detectors"], 0, "boolean-equal"),
         ([], 0, "Usage:"),
     ],
     ids=[
@@ -29,6 +30,7 @@ from tests.conftest import AMULET_DAR, BOOL_DAR
         "clean-dar",
         "info",
         "list",
+        "list-boolean-equal",
         "help",
     ],
 )

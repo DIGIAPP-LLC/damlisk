@@ -9,6 +9,7 @@ ROOT = Path(__file__).parent.parent
 SPLICE_DARS = sorted((ROOT / "examples" / "dars").glob("*.dar"))
 AMULET_DAR = ROOT / "examples" / "dars" / "splice-amulet-0.1.24.dar"
 BOOL_DAR = ROOT / "examples" / "vulnerable" / "boolean-cst" / "boolean-cst.dar"
+EQ_DAR = ROOT / "examples" / "vulnerable" / "boolean-equal" / "boolean-equal.dar"
 
 
 @pytest.fixture(scope="session")
@@ -19,3 +20,8 @@ def amulet_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def bool_index() -> PackageIndex:
     return PackageIndex(Dar.load(BOOL_DAR))
+
+
+@pytest.fixture(scope="session")
+def eq_index() -> PackageIndex:
+    return PackageIndex(Dar.load(EQ_DAR))

@@ -1,0 +1,40 @@
+module Main where
+
+template Ticket
+  with
+    issuer : Party
+    holder : Party
+    used : Bool
+    valid : Bool
+  where
+    signatory issuer
+    observer holder
+    ensure valid == True
+
+    choice Redeem : ContractId Ticket
+      controller holder
+      do
+        assertMsg "already used" (used == False)
+        create this with used = True
+
+    choice Revoke : ()
+      with
+        force : Bool
+      controller issuer
+      do
+        assertMsg "not forced" (True /= force)
+
+    choice Check : Bool
+      with
+        flag : Bool
+      controller holder
+      do
+        pure (flag /= False)
+
+    choice Safe : ContractId Ticket
+      with
+        other : Bool
+      controller holder
+      do
+        assertMsg "same" (used == other)
+        create this with used = True

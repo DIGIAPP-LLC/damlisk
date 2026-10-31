@@ -19,6 +19,7 @@ damlisk list-detectors
 | Detector | Impact | Confidence | What it finds |
 |---|---|---|---|
 | [`boolean-cst`](#boolean-cst) | Medium | Medium | Boolean constants used as conditions |
+| [`boolean-equal`](#boolean-equal) | Informational | High | Comparison to `True` / `False` |
 
 ### boolean-cst
 
@@ -77,3 +78,57 @@ leftover or a full bypass, and the detector cannot tell whether the constant was
 
 **Limitations:** Daml-LF 2.1 drops expression locations, so the reported line is the line of the
 enclosing `choice` declaration, recovered from the sources embedded in the DAR.
+
+### boolean-equal
+
+**Comparison to a Boolean constant.** It reports `==` and `/=` where one operand is `True` or
+`False`. damlc compiles `x == True` to the `EQUAL` builtin and `x /= False` to the `Eq Bool`
+instance method, both without a warning.
+
+| Pattern | Simplifies to |
+|---|---|
+| `x == True`, `x /= False` | `x` |
+| `x == False`, `x /= True` | `not x` |
+
+**Impact:** no runtime effect, the result is the same. The risk is in review: double negations
+such as `active /= False` or `True /= force` make an inverted guard easy to miss, and a mistyped
+constant (`== False` instead of `== True`) silently flips who may exercise a choice.
+
+**Example** (`examples/vulnerable/boolean-equal/daml/Main.daml`):
+
+```haskell
+template Ticket
+  with
+    issuer : Party
+    holder : Party
+    used : Bool
+    valid : Bool
+  where
+    signatory issuer
+    observer holder
+    ensure valid == True
+
+    choice Redeem : ContractId Ticket
+      controller holder
+      do
+        assertMsg "already used" (used == False)
+        create this with used = True
+```
+
+```
+$ damlisk scan examples/vulnerable/boolean-equal/boolean-equal.dar --detect boolean-equal
+[Informational] boolean-equal Main.daml:27
+    Main:Ticket.Check.update: comparison with a Boolean constant (x /= False), use `x`
+[Informational] boolean-equal Main.daml:14
+    Main:Ticket.Redeem.update: comparison with a Boolean constant (x == False), use `not x`
+[Informational] boolean-equal Main.daml:20
+    Main:Ticket.Revoke.update: comparison with a Boolean constant (x /= True), use `not x`
+[Informational] boolean-equal Main.daml:12
+    Main:Ticket.precond: comparison with a Boolean constant (x == True), use `x`
+4 finding(s).
+```
+
+**Recommendation:** use the Boolean directly: `ensure valid`, `assertMsg "already used" (not used)`.
+
+**Limitations:** like `boolean-cst`, the reported line is the enclosing `choice` (or `ensure`)
+line, because Daml-LF 2.1 drops expression locations.
