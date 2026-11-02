@@ -32,3 +32,4 @@ damlisk/damlisk_git_commithash.txt
 .DS_Store
 
 examples/**/.daml/
+.claude/*

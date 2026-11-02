@@ -10,12 +10,17 @@ from tests.conftest import AMULET_DAR, BOOL_DAR, CTRL_DAR
 @pytest.mark.parametrize(
     "args,code,expected",
     [
-        (["scan", str(BOOL_DAR)], 0, "4 finding(s)."),
+        (["scan", str(BOOL_DAR)], 0, "5 finding(s)."),
         (["scan", str(BOOL_DAR), "--fail-on", "medium"], 1, "boolean-cst Main.daml:10"),
         (["scan", str(BOOL_DAR), "--fail-on", "high"], 0, "condition is always True"),
-        (["scan", str(BOOL_DAR), "--exclude", "boolean-cst"], 0, "No findings."),
+        (
+            ["scan", str(BOOL_DAR), "--exclude", "boolean-cst,missing-amount-check"],
+            0,
+            "No findings.",
+        ),
         (["scan", str(BOOL_DAR), "--detect", "nope"], 2, "unknown detector(s): nope"),
-        (["scan", str(AMULET_DAR)], 0, "No findings."),
+        (["scan", str(AMULET_DAR)], 0, "6 finding(s)."),
+        (["scan", str(AMULET_DAR), "--exclude", "missing-amount-check"], 0, "No findings."),
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),
         (["list-detectors"], 0, "boolean-equal"),
@@ -28,7 +33,8 @@ from tests.conftest import AMULET_DAR, BOOL_DAR, CTRL_DAR
         "fail-on-high",
         "exclude",
         "unknown-detector",
-        "clean-dar",
+        "splice-dar",
+        "splice-dar-clean",
         "info",
         "list",
         "list-boolean-equal",
@@ -45,7 +51,7 @@ def test_cli(args, code, expected):
 
 @pytest.mark.parametrize("flag", ["--json", "--pretty-json"])
 def test_scan_json(flag):
-    result = CliRunner().invoke(cli, ["scan", str(BOOL_DAR), flag])
+    result = CliRunner().invoke(cli, ["scan", str(BOOL_DAR), "--detect", "boolean-cst", flag])
     data = json.loads(result.output)
 
     assert result.exit_code == 0

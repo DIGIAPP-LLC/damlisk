@@ -2,7 +2,7 @@ import pytest
 from dazl._gen.com.digitalasset.daml.lf.archive import daml_lf2_pb2 as pb
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import bool_const, demangle, is_compare, lf_name
+from damlisk.lf.builtins import bool_const, demangle, is_compare, is_numeric, lf_name
 from damlisk.lf.lf2 import Parser23
 
 
@@ -123,3 +123,21 @@ def _val(module, name):
 )
 def test_is_compare(fun, expected):
     assert is_compare(fun) is expected
+
+
+def _prim(kind, *args):
+    return lf.Type(prim=lf.Type.Prim(kind, args))
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (_prim(lf.PrimType.NUMERIC, _prim(lf.PrimType.INT64)), True),
+        (_prim(lf.PrimType.INT64), False),
+        (_prim(lf.PrimType.PARTY), False),
+        (_prim(lf.PrimType.OPTIONAL, _prim(lf.PrimType.NUMERIC)), False),
+    ],
+    ids=["numeric", "int", "party", "optional-numeric"],
+)
+def test_is_numeric(typ, expected):
+    assert is_numeric(typ) is expected

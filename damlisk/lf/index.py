@@ -60,6 +60,14 @@ class ChoiceDecl:
 
 
 @dataclass(frozen=True)
+class TemplateDecl:
+    owner: str
+    template: lf.DefTemplate
+    fields: tuple[lf.FieldWithType, ...]
+    loc: lf.Location | None
+
+
+@dataclass(frozen=True)
 class Scope:
     pkg: LfPackage
     module: lf.Module
@@ -100,6 +108,19 @@ class Scope:
 
     def iface_head(self, iface: lf.DefInterface) -> lf.Location | None:
         return self.locate(decl_re("interface", iface.name.segments[-1]))
+
+    def record_fields(self, tmpl: lf.DefTemplate) -> tuple[lf.FieldWithType, ...]:
+        for data in self.module.data_types:
+            same = tuple(data.name.segments) == tuple(tmpl.tycon.segments)
+            if same and data.record is not None:
+                return tuple(data.record.fields)
+        return ()
+
+    def template_decls(self) -> Iterator[TemplateDecl]:
+        for tmpl in self.module.templates:
+            owner = self.qual(*tmpl.tycon.segments)
+            fields = self.record_fields(tmpl)
+            yield TemplateDecl(owner, tmpl, fields, self.template_head(tmpl))
 
     def choices(self) -> Iterator[ChoiceDecl]:
         for tmpl in self.module.templates:
@@ -163,6 +184,11 @@ class PackageIndex:
         scopes = self.scopes(pkg or self.dar.main)
         for scope in scopes:
             yield from scope.choices()
+
+    def template_decls(self, pkg: LfPackage | None = None) -> Iterator[TemplateDecl]:
+        scopes = self.scopes(pkg or self.dar.main)
+        for scope in scopes:
+            yield from scope.template_decls()
 
     def bodies(self, pkg: LfPackage | None = None) -> Iterator[Body]:
         pkg = pkg or self.dar.main

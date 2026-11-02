@@ -21,6 +21,7 @@ damlisk list-detectors
 | [`boolean-cst`](#boolean-cst) | Medium | Medium | Boolean constants used as conditions |
 | [`boolean-equal`](#boolean-equal) | Informational | High | Comparison to `True` / `False` |
 | [`controller-from-argument`](#controller-from-argument) | High | Medium | Consuming choice controlled only by an unchecked argument party |
+| [`missing-amount-check`](#missing-amount-check) | Low | Medium | `Decimal` template field not constrained by `ensure` |
 
 ### boolean-cst
 
@@ -59,7 +60,7 @@ choice Close : ()
 the owner can never close the vault.
 
 ```
-$ damlisk scan examples/vulnerable/boolean-cst/boolean-cst.dar
+$ damlisk scan examples/vulnerable/boolean-cst/boolean-cst.dar --detect boolean-cst
 [Medium] boolean-cst Main.daml:29
     Main:Vault.Close.update: result is always False regardless of the condition
 [Medium] boolean-cst Main.daml:20
@@ -181,7 +182,7 @@ Any observer of `Asset` can exercise `Transfer` with `requester = itself` and
 `newOwner = itself`, and the new contract is still signed by `issuer` and `owner`.
 
 ```
-$ damlisk scan examples/vulnerable/controller-from-argument/controller-from-argument.dar
+$ damlisk scan examples/vulnerable/controller-from-argument/controller-from-argument.dar --detect controller-from-argument
 [High] controller-from-argument Main.daml:30
     Main:Asset.Approve: controlled by unchecked argument `request`
 [High] controller-from-argument Main.daml:16
@@ -205,3 +206,60 @@ such as fetching a contract that has the argument party as signatory, is not rec
 **Recommendation:** control the choice by a contract party (`controller owner`), add a contract
 party as co-controller, or check the argument against the contract
 (`assertMsg "owner only" (requester == owner)`).
+
+### missing-amount-check
+
+**Amount not checked by ensure** (Slither `missing-zero-check`). It reports `Decimal` /
+`Numeric` template fields that the template's `ensure` clause never mentions.
+
+**Impact:** `ensure` is the only invariant the ledger enforces on every create. Without it, a
+signatory can create the contract with `amount = 0.0` or `amount = -100.0`. Every choice that
+adds, subtracts or pays out that amount then has to defend itself, and one that forgets is
+exploitable (negative transfers, inflated balances, division by zero).
+
+| Template | Reported | Why |
+|---|---|---|
+| `amount : Decimal`, no `ensure` | yes | nothing constrains the amount |
+| `ensure quantity > 0.0` with another field `price : Decimal` | yes, `price` | `price` is not mentioned |
+| `ensure principal > 0.0` | no | checked |
+| `ensure validAmount balance` | no | checked through a helper function |
+| `count : Int` only | no | `Int` fields are mostly counters and nonces, not amounts |
+
+**Example** (`examples/vulnerable/missing-amount-check/daml/Main.daml`):
+
+```haskell
+template Iou
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer
+    observer owner
+```
+
+```
+$ damlisk scan examples/vulnerable/missing-amount-check/missing-amount-check.dar
+[Low] missing-amount-check Main.daml:6
+    Main:Iou: ensure does not check `amount`
+[Low] missing-amount-check Main.daml:15
+    Main:Order: ensure does not check `price`
+2 finding(s).
+```
+
+**How it works:** damlc compiles `ensure` to `case $censure this of True -> ... ; False -> error`.
+The detector traces only the condition (`$censure this`), follows it into the helper, and lists
+the numeric fields of `this` that never appear there. The `False` branch is skipped because its
+error message `show`s the whole contract.
+
+**Splice:** it reports 6 templates in `splice-amulet-0.1.24` (for example
+`TransferCommand.amount`, `OpenMiningRound.amuletPrice`, the `issuancePer*` fields of mining
+rounds) and 2 in `splice-wallet-payments-0.1.24` (`targetAmount`). These are real gaps in the
+`ensure` clauses; Splice validates those values in the choices that use them and the contracts
+are created by the DSO or by the paying party, so the risk is low.
+
+**Why Medium confidence:** a field mentioned in `ensure` counts as checked even if the
+condition does not bound it (for example `ensure amount == amount`). Amounts inside nested
+records (`payData.paymentAmount`) are not inspected.
+
+**Recommendation:** constrain every amount in `ensure`, e.g. `ensure amount > 0.0`.

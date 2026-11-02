@@ -19,6 +19,10 @@ def lf_name(value: object) -> str:
     return str(value)
 
 
+def is_numeric(typ: lf.Type) -> bool:
+    return typ.prim is not None and typ.prim.prim == lf.PrimType.NUMERIC
+
+
 def bool_const(expr: lf.Expr) -> str | None:
     if expr.prim_con is None:
         return None
