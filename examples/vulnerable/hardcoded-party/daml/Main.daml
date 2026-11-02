@@ -1,0 +1,36 @@
+module Main where
+
+import DA.Optional (fromSome)
+import DA.Text qualified as T
+
+operator : Party
+operator = fromSome (partyFromText "Operator::1220aa")
+
+hidden : Party
+hidden = fromSome (partyFromText (T.reverse "0221::nedduH"))
+
+template Vault
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    observer operator, hidden
+    ensure amount > 0.0
+
+    choice Withdraw : ()
+      with
+        actor : Party
+      controller actor
+      do
+        assertMsg "admin only" (partyToText actor == "Admin::1220bb")
+
+    nonconsuming choice Resolve : Party
+      with
+        name : Text
+      controller owner
+      do pure (fromSome (partyFromText name))
+
+    nonconsuming choice Describe : Text
+      controller owner
+      do pure (partyToText owner <> " holds " <> show amount)

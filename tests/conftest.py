@@ -14,6 +14,7 @@ AMOUNT_DAR = ROOT / "examples" / "vulnerable" / "missing-amount-check" / "missin
 UNUSED_DAR = (
     ROOT / "examples" / "vulnerable" / "unused-template-field" / "unused-template-field.dar"
 )
+PARTY_DAR = ROOT / "examples" / "vulnerable" / "hardcoded-party" / "hardcoded-party.dar"
 CTRL_DAR = (
     ROOT / "examples" / "vulnerable" / "controller-from-argument" / "controller-from-argument.dar"
 )
@@ -47,3 +48,8 @@ def amount_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def unused_index() -> PackageIndex:
     return PackageIndex(Dar.load(UNUSED_DAR))
+
+
+@pytest.fixture(scope="session")
+def party_index() -> PackageIndex:
+    return PackageIndex(Dar.load(PARTY_DAR))

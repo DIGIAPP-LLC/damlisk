@@ -23,6 +23,7 @@ damlisk list-detectors
 | [`controller-from-argument`](#controller-from-argument) | High | Medium | Consuming choice controlled only by an unchecked argument party |
 | [`missing-amount-check`](#missing-amount-check) | Low | Medium | `Decimal` template field not constrained by `ensure` |
 | [`unused-template-field`](#unused-template-field) | Informational | Medium | Template field that no ledger code reads |
+| [`hardcoded-party`](#hardcoded-party) | Medium | High | Party identity built from or compared with a text literal |
 
 ### boolean-cst
 
@@ -335,3 +336,64 @@ example audit or display data such as `reason`), and fields read only by other p
 visible in this DAR.
 
 **Recommendation:** enforce the field where it matters or remove it.
+
+### hardcoded-party
+
+**Hardcoded party.** damlc rejects party literals, but a party can still be pinned in code by
+converting text. The detector reports:
+
+1. `partyFromText` (or the `TEXT_TO_PARTY` builtin) applied to an expression that contains a
+   text literal, including obfuscated ones such as `partyFromText (T.reverse "0221::nedduH")`
+   or a custom decoder over an encoded string;
+2. `partyToText x` compared (`==`, `/=`, `elem`, `notElem`) with a text literal.
+
+**Impact:** a hardcoded party is invisible to the people who sign the contract. Used as an
+observer it discloses every contract to a third party; used as a beneficiary it diverts value;
+used in a comparison it grants authority to whoever owns that party id, on every deployment.
+Party ids also differ between environments, so the code silently breaks or misroutes when
+promoted.
+
+| Code | Reported | Why |
+|---|---|---|
+| `fromSome (partyFromText "Operator::1220aa")` | yes | party from a literal |
+| `fromSome (partyFromText (T.reverse "0221::nedduH"))` | yes | obfuscated literal |
+| `partyToText actor == "Admin::1220bb"` | yes | authority decided by a literal |
+| `fromSome (partyFromText name)` with `name` a choice argument | no | parsed from input |
+| `partyToText owner <> " holds "` | no | formatting, not a comparison |
+
+**Example** (`examples/vulnerable/hardcoded-party/daml/Main.daml`):
+
+```haskell
+operator : Party
+operator = fromSome (partyFromText "Operator::1220aa")
+
+hidden : Party
+hidden = fromSome (partyFromText (T.reverse "0221::nedduH"))
+
+template Vault
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    observer operator, hidden
+```
+
+```
+$ damlisk scan examples/vulnerable/hardcoded-party/hardcoded-party.dar --detect hardcoded-party
+[Medium] hardcoded-party Main.daml:21
+    Main:Vault.Withdraw.update: party compared with text literal "Admin::1220bb"
+[Medium] hardcoded-party Main.daml:10
+    Main:hidden: party built from text literal "0221::nedduH"
+[Medium] hardcoded-party Main.daml:7
+    Main:operator: party built from text literal "Operator::1220aa"
+3 finding(s).
+```
+
+**Results on real code:** `splice-token-standard-utils-2.0.0` reports
+`specialAccountOwnerStubV1 = partyFromText "cip-112_no-owner::1220000..."`, the CIP-112
+placeholder owner (intended, but a genuine hardcoded party). The rest of Splice is clean:
+`partiesFromMeta` parses parties from metadata at runtime and is not reported.
+
+**Recommendation:** pass parties in as template fields or choice arguments and check them
+against signatories; never derive disclosure or authority from text.
