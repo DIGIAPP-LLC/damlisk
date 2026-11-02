@@ -27,6 +27,11 @@ def let(name, bound, body):
     return lf.Expr(let=lf.Block([lf.Binding(lf.VarWithType(name, None), bound)], body))
 
 
+def do_bind(name, bound, body):
+    block = lf.Block([lf.Binding(lf.VarWithType(name, None), bound)], body)
+    return lf.Expr(update=lf.Update(block=block))
+
+
 def val(name):
     return lf.Expr(val=lf.ValName(REF, (name,)))
 
@@ -76,3 +81,26 @@ def test_trace(expr, fields, compared):
 
     assert flow.fields(expr, "arg") == fields
     assert flow.compared(expr, "arg") == compared
+
+
+HEAD = lf.Expr(
+    val=lf.ValName(lf.ModuleRef(lf.PackageRef("std"), lf.DottedName(("DA", "List"))), ("head",))
+)
+PARTIAL_VALUES = dict([helper("firstOf", app(HEAD, var("xs")))])
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (app(HEAD, proj("arg", "winners")), {("winners", "head")}),
+        (let("w", proj("arg", "winners"), app(HEAD, var("w"))), {("winners", "head")}),
+        (app(HEAD, proj("this", "members")), set()),
+        (app(EQUAL, proj("arg", "winners"), var("this")), set()),
+        (do_bind("w", proj("arg", "winners"), app(HEAD, var("w"))), set()),
+    ],
+    ids=["direct", "let-alias", "contract-state", "not-partial", "ledger-result"],
+)
+def test_partial(expr, expected):
+    uses = FieldFlow(PARTIAL_VALUES).partial(expr, "arg")
+
+    assert {(use.field, use.function) for use in uses} == expected

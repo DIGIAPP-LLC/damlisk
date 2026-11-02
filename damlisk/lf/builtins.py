@@ -9,6 +9,23 @@ ESCAPE_RE = re.compile(r"\$(?:\$|u([0-9a-f]{4}))")
 EQ_RE = re.compile(r"^(?:\$c|\$dm)?(==|/=)\d*$")
 EQ_MODULE = "GHC.Classes"
 MEMBERSHIP = {("DA.Internal.Prelude", "elem"), ("DA.Internal.Prelude", "notElem")}
+PARTIAL = {
+    ("DA.List", "head"),
+    ("DA.List", "tail"),
+    ("DA.List", "last"),
+    ("DA.List", "init"),
+    ("DA.List", "!!"),
+    ("DA.List", "foldl1"),
+    ("DA.List", "foldr1"),
+    ("DA.Foldable", "maximum"),
+    ("DA.Foldable", "minimum"),
+    ("DA.Foldable", "foldl1"),
+    ("DA.Foldable", "foldr1"),
+    ("DA.Optional", "fromSome"),
+    ("DA.Maybe", "fromJust"),
+    ("DA.Either", "fromLeft"),
+    ("DA.Either", "fromRight"),
+}
 
 
 def lf_name(value: object) -> str:
@@ -61,10 +78,29 @@ def eq_operator(fun: lf.Expr) -> str | None:
     return match[1] if match else None
 
 
-def is_member(fun: lf.Expr) -> bool:
+def compare_name(fun: lf.Expr) -> str | None:
+    """Return the comparison `fun` performs (`==`, `/=`, `elem`, `notElem`), or None."""
+    operator = eq_operator(fun)
+    if operator is not None:
+        return operator
     fun = untyped(fun)
-    return fun.val is not None and qual_name(fun.val) in MEMBERSHIP
+    if fun.val is not None and qual_name(fun.val) in MEMBERSHIP:
+        module, name = qual_name(fun.val)
+        return name
+    return None
 
 
 def is_compare(fun: lf.Expr) -> bool:
-    return is_member(fun) or eq_operator(fun) is not None
+    """Return True if `fun` is an equality or membership test."""
+    return compare_name(fun) is not None
+
+
+def partial_name(fun: lf.Expr) -> str | None:
+    """Return the name of the partial library function `fun` refers to (`head`, ...), or None."""
+    fun = untyped(fun)
+    if fun.val is None:
+        return None
+    module, name = qual_name(fun.val)
+    if (module, name) in PARTIAL:
+        return name
+    return None

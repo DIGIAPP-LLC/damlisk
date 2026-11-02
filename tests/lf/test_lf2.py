@@ -2,7 +2,15 @@ import pytest
 from dazl._gen.com.digitalasset.daml.lf.archive import daml_lf2_pb2 as pb
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import bool_const, demangle, is_compare, is_numeric, lf_name
+from damlisk.lf.builtins import (
+    bool_const,
+    compare_name,
+    demangle,
+    is_compare,
+    is_numeric,
+    lf_name,
+    partial_name,
+)
 from damlisk.lf.lf2 import Parser23
 
 
@@ -141,3 +149,33 @@ def _prim(kind, *args):
 )
 def test_is_numeric(typ, expected):
     assert is_numeric(typ) is expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("DA.List", "head"), "head"),
+        (lf.Expr(ty_app=lf.Expr.TyApp(_val("DA.Optional", "fromSome"), ())), "fromSome"),
+        (_val("DA.List", "$u0021$u0021"), "!!"),
+        (_val("DA.List.Total", "head"), None),
+        (_val("DA.Optional", "fromSomeNote"), None),
+        (lf.Expr(builtin="ERROR"), None),
+    ],
+    ids=["head", "typed-fromSome", "index", "total-head", "fromSomeNote", "builtin"],
+)
+def test_partial_name(fun, expected):
+    assert partial_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (lf.Expr(builtin="EQUAL"), "=="),
+        (_val("DA.Internal.Prelude", "notElem"), "notElem"),
+        (_val("GHC.Classes", "$$c$u002f$u003d3"), "/="),
+        (_val("DA.List", "head"), None),
+    ],
+    ids=["equal", "not-elem", "not-equal-instance", "other"],
+)
+def test_compare_name(fun, expected):
+    assert compare_name(fun) == expected

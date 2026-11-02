@@ -24,6 +24,7 @@ damlisk list-detectors
 | [`missing-amount-check`](#missing-amount-check) | Low | Medium | `Decimal` template field not constrained by `ensure` |
 | [`unused-template-field`](#unused-template-field) | Informational | Medium | Template field that no ledger code reads |
 | [`hardcoded-party`](#hardcoded-party) | Medium | High | Party identity built from or compared with a text literal |
+| [`partial-function`](#partial-function) | Low | Medium | Choice argument passed to `head`, `fromSome`, `!!`, ... |
 
 ### boolean-cst
 
@@ -194,7 +195,7 @@ $ damlisk scan examples/vulnerable/controller-from-argument/controller-from-argu
 
 **How it works:** damlc moves controllers and choice bodies into generated helpers
 (`$$sc_Asset_3 this arg`). The detector follows the choice argument through those helpers,
-`let` aliases and `do` bindings, and records which argument fields reach the controllers and
+`let` aliases, and records which argument fields reach the controllers and
 which reach a comparison.
 
 **Splice:** Splice uses argument controllers often, but the consuming ones either add a contract
@@ -397,3 +398,60 @@ placeholder owner (intended, but a genuine hardcoded party). The rest of Splice 
 
 **Recommendation:** pass parties in as template fields or choice arguments and check them
 against signatories; never derive disclosure or authority from text.
+
+### partial-function
+
+**Partial function on a choice argument.** It reports template choices that pass data from
+their argument to a partial library function: `head`, `tail`, `last`, `init`, `!!`, `foldl1`,
+`foldr1` (`DA.List`), `maximum`, `minimum` (`DA.Foldable`), `fromSome` (`DA.Optional`),
+`fromJust` (`DA.Maybe`), `fromLeft`, `fromRight` (`DA.Either`).
+
+**Impact:** an empty list or `None` aborts the whole transaction with a generic error. When
+the input comes from the caller, whoever submits the choice (or the workflow feeding it) can
+make it fail on purpose, blocking a settlement or a payout that other contracts depend on.
+
+| Code | Reported | Why |
+|---|---|---|
+| `choice Payout with winners : [Party]` ... `head winners` | yes | caller controls the list |
+| `fromSome price` with `price : Optional Decimal` argument | yes | caller controls the optional |
+| `head members` with `members` a template field | no | contract state, validated at creation |
+| `fromSomeNote "no price" price` | no | explicit, intended failure |
+| `DA.List.Total.head` | no | total version |
+
+**Example** (`examples/vulnerable/partial-function/daml/Main.daml`):
+
+```haskell
+    choice Payout : Party
+      with
+        winners : [Party]
+      controller operator
+      do pure (head winners)
+```
+
+```
+$ damlisk scan examples/vulnerable/partial-function/partial-function.dar --detect partial-function
+[Low] partial-function Main.daml:27
+    Main:Pool.Latest: argument reaches partial function: `batch` -> last
+[Low] partial-function Main.daml:15
+    Main:Pool.Payout: argument reaches partial function: `winners` -> head
+[Low] partial-function Main.daml:21
+    Main:Pool.Settle: argument reaches partial function: `price` -> fromSome
+3 finding(s).
+```
+
+**How it works:** the same field-flow analysis as `controller-from-argument` follows the
+argument through compiler helpers and `let` bindings, and records which fields reach a call
+that resolves to one of the functions above. Results of ledger operations bound in `do`
+(`x <- fetch …`, `x <- exercise …`) are ledger state, not caller input, so they do not carry
+the argument further.
+
+**Results on real code:** Splice and the `daml-contracts` DARs are clean: Splice uses
+`fromSomeNote` and explicit checks, and the `head` calls in `fundraising` operate on contract
+state, not on choice arguments.
+
+**Why Medium confidence:** a field counts as reaching the function if it appears anywhere in the
+call's arguments (for example inside a filter predicate), even when the list itself does not
+come from the argument.
+
+**Recommendation:** pattern match on the input, use `fromSomeNote` / `DA.List.Total`, or add an
+explicit `assertMsg` so the failure is intended and explained.

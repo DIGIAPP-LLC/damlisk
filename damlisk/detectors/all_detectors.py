@@ -5,6 +5,7 @@ from damlisk.detectors.hygiene.boolean_cst import BooleanConstant
 from damlisk.detectors.hygiene.boolean_equal import BooleanEqual
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
 from damlisk.detectors.validation.missing_amount import MissingAmountCheck
+from damlisk.detectors.validation.partial_function import PartialFunction
 
 DETECTORS: tuple[type[AbstractDetector], ...] = (
     BooleanConstant,
@@ -13,4 +14,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     MissingAmountCheck,
     UnusedTemplateField,
     HardcodedParty,
+    PartialFunction,
 )
