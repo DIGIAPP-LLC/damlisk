@@ -22,6 +22,7 @@ damlisk list-detectors
 | [`boolean-equal`](#boolean-equal) | Informational | High | Comparison to `True` / `False` |
 | [`controller-from-argument`](#controller-from-argument) | High | Medium | Consuming choice controlled only by an unchecked argument party |
 | [`missing-amount-check`](#missing-amount-check) | Low | Medium | `Decimal` template field not constrained by `ensure` |
+| [`unused-template-field`](#unused-template-field) | Informational | Medium | Template field that no ledger code reads |
 
 ### boolean-cst
 
@@ -239,7 +240,7 @@ template Iou
 ```
 
 ```
-$ damlisk scan examples/vulnerable/missing-amount-check/missing-amount-check.dar
+$ damlisk scan examples/vulnerable/missing-amount-check/missing-amount-check.dar --detect missing-amount-check
 [Low] missing-amount-check Main.daml:6
     Main:Iou: ensure does not check `amount`
 [Low] missing-amount-check Main.daml:15
@@ -263,3 +264,74 @@ condition does not bound it (for example `ensure amount == amount`). Amounts ins
 records (`payData.paymentAmount`) are not inspected.
 
 **Recommendation:** constrain every amount in `ensure`, e.g. `ensure amount > 0.0`.
+
+### unused-template-field
+
+**Unused template field** (Slither `unused-state`). It reports template fields that no
+`ensure`, signatory, observer, key, choice, interface view or helper ever reads.
+
+**Impact:** an unused field is stored and disclosed to every stakeholder on every contract, but
+the ledger never enforces anything with it. Often it is just leftover data; sometimes it is a
+check that was planned and never written, which is worse because the field suggests a rule
+that does not exist.
+
+| Field | Reported | Why |
+|---|---|---|
+| `acceptedToken : Text`, never compared | yes | stored, never enforced |
+| `owner` used in `observer owner` | no | read by the observer clause |
+| `note` returned by `pure note` | no | read by a choice |
+| `limit.cap` read after `fetch limitCid` | no | read through a fetched contract |
+
+**Example** (`examples/vulnerable/unused-template-field/daml/Main.daml`):
+
+```haskell
+template Campaign
+  with
+    platform : Party
+    owner : Party
+    target : Decimal
+    acceptedToken : Text
+    note : Text
+  where
+    signatory platform
+    observer owner
+    ensure target > 0.0
+
+    choice Invest : ContractId Campaign
+      with
+        investor : Party
+        token : Text
+        amount : Decimal
+        limitCid : ContractId Limit
+      controller investor, platform
+      do
+        limit <- fetch limitCid
+        assertMsg "over cap" (amount <= limit.cap)
+        create this with target = target - amount
+```
+
+`Invest` never compares `token` with `acceptedToken`, so the campaign accepts any token.
+
+```
+$ damlisk scan examples/vulnerable/unused-template-field/unused-template-field.dar --detect unused-template-field
+[Informational] unused-template-field Main.daml:11
+    Main:Campaign: no code reads `acceptedToken`
+1 finding(s).
+```
+
+**How it works:** the detector collects every record projection (`x.field`) in user code,
+plus the projections inside the `$sel:` / `GetField` getters that user code calls (dot syntax
+on a fetched contract may compile to a getter). Derived code is skipped because it touches every
+field mechanically: `Show`, `Eq` and `Ord` instances, setters and the `$W` constructor wrapper.
+
+**Results on real code:**
+
+- `splice-amulet-0.1.24`: 7 templates, for example `ValidatorRight.dso` (neither signatory
+  nor observer) and `ValidatorLicense.sponsor` (documented in Splice as deprecated).
+- `splice-wallet-payments-0.1.24`: `reference` of the two `Terminated*` templates.
+
+**Why Medium confidence:** off-ledger applications may read the field through codegen (for
+example audit or display data such as `reason`), and fields read only by other packages are not
+visible in this DAR.
+
+**Recommendation:** enforce the field where it matters or remove it.

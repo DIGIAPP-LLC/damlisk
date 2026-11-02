@@ -11,6 +11,9 @@ AMULET_DAR = ROOT / "examples" / "dars" / "splice-amulet-0.1.24.dar"
 BOOL_DAR = ROOT / "examples" / "vulnerable" / "boolean-cst" / "boolean-cst.dar"
 EQ_DAR = ROOT / "examples" / "vulnerable" / "boolean-equal" / "boolean-equal.dar"
 AMOUNT_DAR = ROOT / "examples" / "vulnerable" / "missing-amount-check" / "missing-amount-check.dar"
+UNUSED_DAR = (
+    ROOT / "examples" / "vulnerable" / "unused-template-field" / "unused-template-field.dar"
+)
 CTRL_DAR = (
     ROOT / "examples" / "vulnerable" / "controller-from-argument" / "controller-from-argument.dar"
 )
@@ -39,3 +42,8 @@ def ctrl_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def amount_index() -> PackageIndex:
     return PackageIndex(Dar.load(AMOUNT_DAR))
+
+
+@pytest.fixture(scope="session")
+def unused_index() -> PackageIndex:
+    return PackageIndex(Dar.load(UNUSED_DAR))

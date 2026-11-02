@@ -1,0 +1,37 @@
+module Main where
+
+template Limit
+  with
+    platform : Party
+    cap : Decimal
+  where
+    signatory platform
+    ensure cap > 0.0
+
+template Campaign
+  with
+    platform : Party
+    owner : Party
+    target : Decimal
+    acceptedToken : Text
+    note : Text
+  where
+    signatory platform
+    observer owner
+    ensure target > 0.0
+
+    choice Invest : ContractId Campaign
+      with
+        investor : Party
+        token : Text
+        amount : Decimal
+        limitCid : ContractId Limit
+      controller investor, platform
+      do
+        limit <- fetch limitCid
+        assertMsg "over cap" (amount <= limit.cap)
+        create this with target = target - amount
+
+    nonconsuming choice Describe : Text
+      controller owner
+      do pure note

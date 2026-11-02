@@ -190,25 +190,47 @@ class PackageIndex:
         for scope in scopes:
             yield from scope.template_decls()
 
-    def bodies(self, pkg: LfPackage | None = None) -> Iterator[Body]:
+    def decls(self, pkg: LfPackage | None = None) -> list[Body]:
+        """Return the declaration bodies of a package.
+
+        These are template fields, choices, interface instances and exception messages,
+        without the package's top-level values. Defaults to the main package.
+        """
         pkg = pkg or self.dar.main
-        scopes = list(self.scopes(pkg))
         decls: list[Body] = []
+        scopes = self.scopes(pkg)
         for scope in scopes:
             found = scope.decls()
             decls.extend(found)
+        extras = extra_bodies(pkg)
+        decls.extend(extras)
+        return decls
+
+    def bodies(self, pkg: LfPackage | None = None) -> Iterator[Body]:
+        """Yield every body of a package: declarations first, then top-level values.
+
+        Compiler helpers reachable from a declaration are reported under that declaration's
+        owner and location. Defaults to the main package.
+        """
+        pkg = pkg or self.dar.main
+        decls = self.decls(pkg)
         alias = aliases(decls, pkg, self.values)
         yield from decls
+        scopes = self.scopes(pkg)
         for scope in scopes:
             yield from scope.values(alias)
-        for impl in pkg.extras.implements:
-            owner = f"{impl.template}@{impl.interface}"
-            yield Body(f"{owner}.view", impl.view, impl.location)
-            methods = impl.methods.items()
-            for name, expr in methods:
-                yield Body(f"{owner}.{name}", expr, impl.location)
-        for exc in pkg.extras.exceptions:
-            yield Body(f"{exc.name}.message", exc.message, exc.location)
+
+
+def extra_bodies(pkg: LfPackage) -> Iterator[Body]:
+    """Yield interface-instance views, methods and exception messages of a package."""
+    for impl in pkg.extras.implements:
+        owner = f"{impl.template}@{impl.interface}"
+        yield Body(f"{owner}.view", impl.view, impl.location)
+        methods = impl.methods.items()
+        for name, expr in methods:
+            yield Body(f"{owner}.{name}", expr, impl.location)
+    for exc in pkg.extras.exceptions:
+        yield Body(f"{exc.name}.message", exc.message, exc.location)
 
 
 def aliases(
