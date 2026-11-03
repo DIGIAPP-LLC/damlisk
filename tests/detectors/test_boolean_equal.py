@@ -21,7 +21,7 @@ def _method(module, name):
 
 NOT_EQ = _method("GHC.Classes", "$$c$u002f$u003d20")
 EQ = _method("GHC.Classes", "$u003d$u003d")
-OTHER = _method("Main", "$$c$u002f$u003d")
+OTHER = _method("Main", "$u003d$u003d")
 
 
 @pytest.mark.parametrize(
@@ -44,7 +44,7 @@ OTHER = _method("Main", "$$c$u002f$u003d")
         "class-method",
         "no-constant",
         "other-builtin",
-        "other-module",
+        "user-operator",
     ],
 )
 def test_misuse(fun, args, expected):

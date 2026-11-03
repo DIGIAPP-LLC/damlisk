@@ -2,7 +2,7 @@ from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.detectors.abstract_detector import AbstractDetector
 from damlisk.lf.builtins import mentions_update
-from damlisk.lf.tree import find_all, mentions_var
+from damlisk.lf.tree import find_all, used_later
 from damlisk.output.finding import Confidence, Finding, Impact
 
 
@@ -12,16 +12,6 @@ def wrapped_actions(binding: lf.Binding) -> bool:
     if update is None or update.pure is None:
         return False
     return mentions_update(update.pure.type)
-
-
-def used_later(block: lf.Block, pos: int, name: str) -> bool:
-    """Return True if binder `name` of binding `pos` is used by a later binding or the body."""
-    later = [binding.bound for binding in block.bindings[pos + 1 :]]
-    later.append(block.body)
-    for expr in later:
-        if mentions_var(expr, name):
-            return True
-    return False
 
 
 def discarded_count(block: lf.Block) -> int:

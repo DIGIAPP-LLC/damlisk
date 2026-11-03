@@ -76,3 +76,13 @@ def mentions_var(root: Term, name: str) -> bool:
         if isinstance(node, lf.Expr) and node.var == name:
             return True
     return False
+
+
+def used_later(block: lf.Block, pos: int, name: str) -> bool:
+    """Return True if binder `name` of binding `pos` is used by a later binding or the body."""
+    later = [binding.bound for binding in block.bindings[pos + 1 :]]
+    later.append(block.body)
+    for expr in later:
+        if mentions_var(expr, name):
+            return True
+    return False

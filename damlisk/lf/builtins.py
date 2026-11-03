@@ -99,13 +99,18 @@ def qual_name(val: lf.ValName) -> tuple[str, str]:
 
 
 def eq_operator(fun: lf.Expr) -> str | None:
+    """Return `==` or `/=` if `fun` is an equality test, or None.
+
+    Accepts the `EQUAL` builtin, the `Eq` class methods of `GHC.Classes` and the derived
+    `Eq` instance methods (`$c==15`) that damlc generates in user modules.
+    """
     fun = untyped(fun)
     if fun.builtin is not None:
         return "==" if lf_name(fun.builtin) == "EQUAL" else None
     if fun.val is None:
         return None
     module, name = qual_name(fun.val)
-    if module != EQ_MODULE:
+    if module != EQ_MODULE and not name.startswith("$c"):
         return None
     match = EQ_RE.match(name)
     return match[1] if match else None

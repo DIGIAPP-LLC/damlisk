@@ -174,9 +174,11 @@ def test_partial_name(fun, expected):
         (lf.Expr(builtin="EQUAL"), "=="),
         (_val("DA.Internal.Prelude", "notElem"), "notElem"),
         (_val("GHC.Classes", "$$c$u002f$u003d3"), "/="),
+        (_val("FundingCampaign", "$$c$u003d$u003d15"), "=="),
+        (_val("FundingCampaign", "$u003d$u003d"), None),
         (_val("DA.List", "head"), None),
     ],
-    ids=["equal", "not-elem", "not-equal-instance", "other"],
+    ids=["equal", "not-elem", "not-equal-instance", "derived-instance", "user-operator", "other"],
 )
 def test_compare_name(fun, expected):
     assert compare_name(fun) == expected

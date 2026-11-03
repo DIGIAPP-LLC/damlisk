@@ -27,6 +27,7 @@ damlisk list-detectors
 | [`partial-function`](#partial-function) | Low | Medium | Choice argument passed to `head`, `fromSome`, `!!`, ... |
 | [`discarded-update`](#discarded-update) | Medium | High | Ledger actions wrapped in `pure` and never run |
 | [`nonconsuming-create`](#nonconsuming-create) | High | Medium | Nonconsuming choice creates its own template without archiving `self` |
+| [`unchecked-fetch`](#unchecked-fetch) | High | Medium | Contract fetched from a choice argument and used without validation |
 
 ### boolean-cst
 
@@ -566,3 +567,58 @@ nonconsuming choices creates its own template.
 
 **Recommendation:** make the choice consuming (the default), or call `archive self` before
 creating the replacement contracts.
+
+### unchecked-fetch
+
+**Unchecked fetch.** It reports a choice that fetches a contract whose id comes from its
+argument, reads the fetched data, and never compares that contract with the current contract or
+with the other arguments.
+
+**Impact:** `fetch` only proves that *some* contract of that template exists and is visible to
+the submitter. Without a check such as `tok.issuer == trusted` or `tok.owner == borrower`, the
+choice accepts a contract the caller created themselves, or one that belongs to someone else:
+self-issued collateral, another user's balance, or the wrong campaign.
+
+**Example** (`examples/vulnerable/unchecked-fetch/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice Borrow : ContractId Loan
+      with
+        borrower : Party
+        collateral : ContractId Token
+      controller borrower
+      do
+        tok <- fetch collateral
+        create Loan with bank, borrower, amount = tok.amount / 2.0
+```
+
+The borrower issues a `Token` to themselves for 1,000,000 and borrows 500,000 against it.
+
+```
+$ damlisk scan examples/vulnerable/unchecked-fetch/unchecked-fetch.dar --detect unchecked-fetch
+[High] unchecked-fetch Main.daml:29
+    Main:Bank.Borrow: fetched contract `collateral` is used without validation
+[High] unchecked-fetch Main.daml:38
+    Main:Bank.BorrowUsd: fetched contract `collateral` is used without validation
+2 finding(s).
+```
+
+`BorrowUsd` is reported too: `tok.currency == "USD"` compares with a constant, which says
+nothing about who issued the token. `SafeBorrow` (checks `tok.issuer == trusted` and
+`tok.owner == borrower`) and `Exists` (fetches but never reads the data) are not reported.
+
+**How it works:** the field-flow analysis treats `tok <- fetch cid` as an alias of the argument
+field `cid` when `tok` is used later. A comparison (`==`, `/=`, `elem`, `notElem`, including
+derived `Eq` instances) counts as a check only if it puts the fetched data next to a field of
+`this` or of another argument. Fetches through library helpers that validate themselves, such
+as Splice's `fetchChecked`, are not treated as raw fetches.
+
+**Results on real code:** Splice is clean (it fetches through `fetchChecked` /
+`fetchReferenceData`). `daml-contracts` has one finding, in every fundraising version:
+`InstallmentRelease_Escrow` fetches `campaignCid` and checks only `status == Completed` and the
+balance. Nothing ties the campaign to the installment, so the platform can escrow funds from a
+different campaign's balance.
+
+**Recommendation:** compare the fetched contract with trusted data before using it
+(`assertMsg "issuer" (tok.issuer == trusted)`, matching ids or parties), or use a checked fetch
+helper.

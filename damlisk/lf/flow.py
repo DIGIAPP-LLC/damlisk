@@ -4,9 +4,10 @@ from dataclasses import dataclass, field
 from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.builtins import compare_name, partial_name, untyped
-from damlisk.lf.tree import child_terms, find_all
+from damlisk.lf.tree import child_terms, find_all, used_later
 
 WHOLE = frozenset({"*"})
+THIS = "@this"
 Aliases = dict[str, frozenset[str]]
 Visited = frozenset[lf.ValName]
 Node = lf.Expr | lf.Update
@@ -24,6 +25,8 @@ class Usage:
     fields: set[str] = field(default_factory=set)
     compared: set[str] = field(default_factory=set)
     partial: set[PartialUse] = field(default_factory=set)
+    fetched: set[str] = field(default_factory=set)
+    linked: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -31,9 +34,25 @@ class Usage:
         self.add_sinks(other)
 
     def add_sinks(self, other: "Usage") -> None:
-        """Add only the compared fields and partial-function uses of `other`."""
+        """Add only the sinks of `other`: compared, partial-function, fetched, linked fields."""
         self.compared |= other.compared
         self.partial |= other.partial
+        self.fetched |= other.fetched
+        self.linked |= other.linked
+
+
+def linked_fields(args: list[Usage]) -> set[str]:
+    """Return the fields that a comparison checks against another tracked value.
+
+    `tok.issuer == issuer` links `tok` to the contract (`THIS`); `tok.status == Done` only
+    compares with a constant and links nothing.
+    """
+    mixed: set[str] = set()
+    for arg in args:
+        mixed |= arg.fields
+    if len(mixed) < 2:
+        return set()
+    return mixed - {THIS}
 
 
 @dataclass(frozen=True)
@@ -70,6 +89,14 @@ class FieldFlow:
     def partial(self, expr: lf.Expr, var: str) -> set[PartialUse]:
         """Return the fields of `var` that reach a partial function such as `head` in `expr`."""
         return self.trace(expr, {var: WHOLE}).partial
+
+    def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
+        """Trace choice argument `var` and contract `this` through `expr`.
+
+        `fetched` holds the contract-id fields of `var` whose fetched contract is read;
+        `linked` holds the fields compared with a field of `this` or of another argument.
+        """
+        return self.trace(expr, {var: WHOLE, this: frozenset({THIS})})
 
     def trace(self, node: Node, aliases: Aliases, visited: Visited = frozenset()) -> Usage:
         """Return how `node` uses the fields carried by the variables in `aliases`."""
@@ -109,16 +136,25 @@ class FieldFlow:
         """Handle `let` (pure) and `do` blocks.
 
         In a `let`, a binder bound to tracked fields becomes an alias of them. In a `do`
-        block the binder holds the result of a ledger operation (fetch, exercise, create),
-        which is ledger state rather than caller input, so it is not aliased.
+        block the binder holds the result of a ledger operation (exercise, create), which is
+        ledger state rather than caller input, so it is not aliased. The one exception is
+        `c <- fetch cid` on a tracked contract id that is read later: `c` becomes an alias of
+        the id's fields, so checks on `c` count as checks on the id, and the id is recorded
+        as fetched.
         """
         usage = Usage()
         scope = dict(aliases)
-        for binding in block.bindings:
+        for pos, binding in enumerate(block.bindings):
             bound = self.trace(binding.bound, scope, visited)
             usage.merge(bound)
-            if pure and bound.fields:
-                scope[binding.binder.var] = frozenset(bound.fields)
+            name = binding.binder.var
+            if not bound.fields:
+                continue
+            if pure:
+                scope[name] = frozenset(bound.fields)
+            elif self.fetches(binding.bound) and used_later(block, pos, name):
+                scope[name] = frozenset(bound.fields)
+                usage.fetched |= bound.fields - {THIS}
         usage.merge(self.trace(block.body, scope, visited))
         return usage
 
@@ -134,6 +170,8 @@ class FieldFlow:
                 usage.compared |= arg.fields
             if partial is not None:
                 usage.partial |= {PartialUse(name, partial) for name in arg.fields}
+        if comparison is not None:
+            usage.linked |= linked_fields(args)
         helper = self.helper(call.fun, visited)
         if helper is None:
             usage.merge(self.trace(call.fun, aliases, visited))
@@ -150,6 +188,20 @@ class FieldFlow:
         if inner:
             usage.merge(self.trace(helper.body, inner, helper.visited(visited)))
         return usage
+
+    def fetches(self, expr: lf.Expr) -> bool:
+        """Return True if `expr` is `fetch cid`, written inline or as a call to a fetch helper.
+
+        damlc compiles `fetch cid` to a call of a generated helper that only fetches.
+        """
+        if expr.app is not None:
+            helper = self.helper(expr.app.fun, frozenset())
+            if helper is None:
+                return False
+            expr = helper.body
+        while expr.abs is not None:
+            expr = expr.abs.body
+        return expr.update is not None and expr.update.fetch is not None
 
     def helper(self, fun: lf.Expr, visited: Visited) -> Helper | None:
         """Return the lambda or package value that `fun` calls, or None if it is opaque."""

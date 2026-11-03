@@ -17,6 +17,7 @@ UNUSED_DAR = (
 PARTY_DAR = ROOT / "examples" / "vulnerable" / "hardcoded-party" / "hardcoded-party.dar"
 PARTIAL_DAR = ROOT / "examples" / "vulnerable" / "partial-function" / "partial-function.dar"
 COPY_DAR = ROOT / "examples" / "vulnerable" / "nonconsuming-create" / "nonconsuming-create.dar"
+FETCH_DAR = ROOT / "examples" / "vulnerable" / "unchecked-fetch" / "unchecked-fetch.dar"
 DROP_DAR = ROOT / "examples" / "vulnerable" / "discarded-update" / "discarded-update.dar"
 CTRL_DAR = (
     ROOT / "examples" / "vulnerable" / "controller-from-argument" / "controller-from-argument.dar"
@@ -71,3 +72,8 @@ def drop_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def copy_index() -> PackageIndex:
     return PackageIndex(Dar.load(COPY_DAR))
+
+
+@pytest.fixture(scope="session")
+def fetch_index() -> PackageIndex:
+    return PackageIndex(Dar.load(FETCH_DAR))

@@ -1,7 +1,7 @@
 import pytest
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.flow import FieldFlow
+from damlisk.lf.flow import THIS, FieldFlow, Usage, linked_fields
 
 REF = lf.ModuleRef(lf.PackageRef("pkg"), lf.DottedName(segments=("Main",)))
 EQUAL = lf.Expr(builtin="EQUAL")
@@ -104,3 +104,63 @@ def test_partial(expr, expected):
     uses = FieldFlow(PARTIAL_VALUES).partial(expr, "arg")
 
     assert {(use.field, use.function) for use in uses} == expected
+
+
+def fetch(cid):
+    return lf.Expr(update=lf.Update(fetch=lf.Update.Fetch(None, cid)))
+
+
+FETCH_VALUES = dict([helper("fetchTok", lam(["cid"], fetch(var("cid"))))])
+TEXT = lf.Expr(prim_lit=lf.PrimLit(text="USD"))
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (fetch(var("cid")), True),
+        (app(val("fetchTok"), var("cid")), True),
+        (app(val("useArg"), var("cid")), False),
+        (var("cid"), False),
+    ],
+    ids=["inline", "helper", "other-helper", "not-a-call"],
+)
+def test_fetches(expr, expected):
+    values = FETCH_VALUES | VALUES
+
+    assert FieldFlow(values).fetches(expr) is expected
+
+
+@pytest.mark.parametrize(
+    "args,expected",
+    [
+        ([{"cid"}, {THIS}], {"cid"}),
+        ([{"cid"}, {"owner"}], {"cid", "owner"}),
+        ([{"cid"}, set()], set()),
+        ([{"cid"}, {"cid"}], set()),
+    ],
+    ids=["with-contract", "with-argument", "with-constant", "with-itself"],
+)
+def test_linked_fields(args, expected):
+    assert linked_fields([Usage(fields=fields) for fields in args]) == expected
+
+
+def _fetched(check):
+    use = proj("tok", "amount")
+    return do_bind("tok", app(val("fetchTok"), proj("arg", "cid")), app(EQUAL, check, use))
+
+
+@pytest.mark.parametrize(
+    "expr,fetched,linked",
+    [
+        (_fetched(proj("this", "issuer")), {"cid"}, {"cid"}),
+        (_fetched(TEXT), {"cid"}, set()),
+        (do_bind("tok", app(val("fetchTok"), proj("arg", "cid")), TEXT), set(), set()),
+        (do_bind("tok", app(val("fetchTok"), proj("this", "cid")), var("tok")), set(), set()),
+    ],
+    ids=["checked", "constant-only", "never-read", "contract-field"],
+)
+def test_fetch_usage(expr, fetched, linked):
+    usage = FieldFlow(FETCH_VALUES).fetch_usage(expr, "arg", "this")
+
+    assert usage.fetched == fetched
+    assert usage.linked == linked
