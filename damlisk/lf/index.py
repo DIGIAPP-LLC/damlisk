@@ -55,6 +55,11 @@ class ChoiceDecl:
     iface: bool
     loc: lf.Location | None
 
+    @property
+    def parent(self) -> str:
+        """Return the owner (`Module:Template`) of the template or interface of the choice."""
+        return self.owner.rsplit(".", 1)[0]
+
     def bodies(self) -> Iterator[Body]:
         return fields(self.owner, self.choice, CH_ATTRS, self.loc)
 

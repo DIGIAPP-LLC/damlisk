@@ -68,6 +68,11 @@ def mentions_update(typ: lf.Type) -> bool:
     return False
 
 
+def type_owner(name: lf.TypeConName) -> str:
+    """Return a type's owner string in the `Module:Type` form used by template owners."""
+    return f"{module_name(name)}:{module_local_name(name)}"
+
+
 def bool_const(expr: lf.Expr) -> str | None:
     if expr.prim_con is None:
         return None

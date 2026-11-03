@@ -2,10 +2,10 @@ import re
 from dataclasses import dataclass
 
 from dazl.damlast import daml_lf_1 as lf
-from dazl.damlast.util import module_local_name, module_name
+from dazl.damlast.util import module_local_name
 
 from damlisk.detectors.abstract_detector import AbstractDetector
-from damlisk.lf.builtins import demangle
+from damlisk.lf.builtins import demangle, type_owner
 from damlisk.lf.index import PackageIndex, TemplateDecl
 from damlisk.lf.tree import find_all
 from damlisk.output.finding import Confidence, Finding, Impact
@@ -26,11 +26,6 @@ class FieldRef:
 def local_name(name: lf.ValName) -> str:
     """Return the demangled local name of a value, e.g. `$c==` for `$$c$u003d$u003d`."""
     return demangle(module_local_name(name))
-
-
-def type_owner(name: lf.TypeConName) -> str:
-    """Return a type's owner string in the `Module:Type` form used by template owners."""
-    return f"{module_name(name)}:{module_local_name(name)}"
 
 
 def projections(root: lf.Expr) -> set[FieldRef]:

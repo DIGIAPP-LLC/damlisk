@@ -1,0 +1,56 @@
+module Main where
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+    ensure amount > 0.0
+
+    nonconsuming choice Split : (ContractId Token, ContractId Token)
+      with
+        part : Decimal
+      controller owner
+      do
+        left <- create this with amount = part
+        right <- create this with amount = amount - part
+        pure (left, right)
+
+    nonconsuming choice Copy : ContractId Token
+      controller owner
+      do
+        create Token with issuer, owner, amount
+
+    nonconsuming choice SafeSplit : (ContractId Token, ContractId Token)
+      with
+        part : Decimal
+      controller owner
+      do
+        archive self
+        left <- create this with amount = part
+        right <- create this with amount = amount - part
+        pure (left, right)
+
+    nonconsuming choice SafeMove : ContractId Token
+      with
+        receiver : Party
+      controller owner, receiver
+      do
+        exercise self Archive
+        create this with owner = receiver
+
+    choice Merge : ContractId Token
+      with
+        other : ContractId Token
+      controller owner
+      do
+        tok <- fetch other
+        archive other
+        create this with amount = amount + tok.amount
+
+    nonconsuming choice Balance : Decimal
+      controller owner
+      do
+        pure amount

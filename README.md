@@ -26,6 +26,7 @@ damlisk list-detectors
 | [`hardcoded-party`](#hardcoded-party) | Medium | High | Party identity built from or compared with a text literal |
 | [`partial-function`](#partial-function) | Low | Medium | Choice argument passed to `head`, `fromSome`, `!!`, ... |
 | [`discarded-update`](#discarded-update) | Medium | High | Ledger actions wrapped in `pure` and never run |
+| [`nonconsuming-create`](#nonconsuming-create) | High | Medium | Nonconsuming choice creates its own template without archiving `self` |
 
 ### boolean-cst
 
@@ -509,3 +510,59 @@ whose binder is not used by any later statement.
 **Recommendation:** run the actions (`forA_ cids archive`, `mapA_ archive cids`,
 `sequence_ (map archive cids)`), and use `foldlA` / `forA` instead of `foldl` / `map` when the
 step is an `Update`.
+
+### nonconsuming-create
+
+**Nonconsuming self-create.** It reports a `nonconsuming` choice that creates a contract of its
+own template (`create this with …` or `create Token with …`) and never uses `self`, so nothing
+archives the original contract.
+
+**Impact:** the original stays active next to the new contracts, so the asset is duplicated.
+The new contracts carry the authority of every signatory of the original: with
+`signatory issuer, owner` and `controller owner`, the owner can mint tokens co-signed by the
+issuer without the issuer taking part. A `Split` of 100 into 30 + 70 leaves the owner with 200.
+damlc accepts this without a warning.
+
+**Example** (`examples/vulnerable/nonconsuming-create/daml/Main.daml`):
+
+```haskell
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    nonconsuming choice Split : (ContractId Token, ContractId Token)
+      with
+        part : Decimal
+      controller owner
+      do
+        left <- create this with amount = part
+        right <- create this with amount = amount - part
+        pure (left, right)
+```
+
+```
+$ damlisk scan examples/vulnerable/nonconsuming-create/nonconsuming-create.dar --detect nonconsuming-create
+[High] nonconsuming-create Main.daml:21
+    Main:Token.Copy: creates `Main:Token` but never archives `self`
+[High] nonconsuming-create Main.daml:12
+    Main:Token.Split: creates `Main:Token` but never archives `self`
+2 finding(s).
+```
+
+`SafeSplit` (`archive self` first), `SafeMove` (`exercise self Archive`), the consuming `Merge`
+and the read-only `Balance` are not reported.
+
+**How it works:** damlc moves `create` into generated helpers (`$$sc_Token_4`), so the detector
+follows every helper of the main package that the choice calls and collects the templates they
+create. If the choice's own template is among them, it traces `self` through the same helpers;
+any use of `self` (archive, exercise, passing it on) counts as handled.
+
+**Results on real code:** Splice and the `daml-contracts` DARs are clean: none of their
+nonconsuming choices creates its own template.
+
+**Recommendation:** make the choice consuming (the default), or call `archive self` before
+creating the replacement contracts.
