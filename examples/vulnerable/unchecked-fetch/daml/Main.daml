@@ -1,0 +1,66 @@
+module Main where
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    currency : Text
+    amount : Decimal
+  where
+    signatory issuer
+    observer owner
+
+template Loan
+  with
+    bank : Party
+    borrower : Party
+    amount : Decimal
+  where
+    signatory bank
+    observer borrower
+
+template Bank
+  with
+    bank : Party
+    trusted : Party
+  where
+    signatory bank
+
+    nonconsuming choice Borrow : ContractId Loan
+      with
+        borrower : Party
+        collateral : ContractId Token
+      controller borrower
+      do
+        tok <- fetch collateral
+        create Loan with bank, borrower, amount = tok.amount / 2.0
+
+    nonconsuming choice BorrowUsd : ContractId Loan
+      with
+        borrower : Party
+        collateral : ContractId Token
+      controller borrower
+      do
+        tok <- fetch collateral
+        assertMsg "USD only" (tok.currency == "USD")
+        create Loan with bank, borrower, amount = tok.amount / 2.0
+
+    nonconsuming choice SafeBorrow : ContractId Loan
+      with
+        borrower : Party
+        collateral : ContractId Token
+      controller borrower
+      do
+        tok <- fetch collateral
+        assertMsg "untrusted issuer" (tok.issuer == trusted)
+        assertMsg "not your token" (tok.owner == borrower)
+        create Loan with bank, borrower, amount = tok.amount / 2.0
+
+    nonconsuming choice Exists : ()
+      with
+        borrower : Party
+        collateral : ContractId Token
+      controller borrower
+      do
+        _ <- fetch collateral
+        pure ()
