@@ -25,6 +25,7 @@ damlisk list-detectors
 | [`unused-template-field`](#unused-template-field) | Informational | Medium | Template field that no ledger code reads |
 | [`hardcoded-party`](#hardcoded-party) | Medium | High | Party identity built from or compared with a text literal |
 | [`partial-function`](#partial-function) | Low | Medium | Choice argument passed to `head`, `fromSome`, `!!`, ... |
+| [`discarded-update`](#discarded-update) | Medium | High | Ledger actions wrapped in `pure` and never run |
 
 ### boolean-cst
 
@@ -455,3 +456,56 @@ come from the argument.
 
 **Recommendation:** pattern match on the input, use `fromSomeNote` / `DA.List.Total`, or add an
 explicit `assertMsg` so the failure is intended and explained.
+
+### discarded-update
+
+**Discarded update.** It reports a `do` block that binds `pure x`, where `x` holds ledger
+actions (its type contains `Update`, e.g. `[Update ()]`), and never uses the result.
+
+**Impact:** the actions are built as values but never run. The choice commits successfully and
+the caller believes the archives, creates or exercises happened. A `BurnAll` that burns nothing,
+or a payout that pays nobody, leaves the ledger inconsistent with what off-ledger systems record.
+damlc accepts this without a warning.
+
+How damlc handles the common mistakes with folds and maps (verified with SDK 3.4.8):
+
+| Code | Compiler | Runtime | Reported |
+|---|---|---|---|
+| `foldlA (\acc cid -> do c <- fetch cid; …) 0.0 cids` | ok | correct | no |
+| `foldl (\acc cid -> do c <- fetch cid; …) 0.0 cids` | **type error** | – | – |
+| `foldl (\acc cid -> acc >> archive cid) (pure ()) cids` | ok | correct, all archived | no |
+| `_ <- pure (map archive cids)` | ok, no warning | **nothing archived** | **yes** |
+| `_ <- pure (forA_ cids archive)` | ok, no warning | **nothing archived** | **yes** |
+| `actions <- pure (map archive cids); sequence_ actions` | ok | correct | no |
+| `let _ = map archive cids` | ok, no warning | **nothing archived** | no: damlc deletes the unused `let`, so the DAR has no trace of it |
+
+**Example** (`examples/vulnerable/discarded-update/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice BurnAll : ()
+      with
+        cids : [ContractId Coin]
+      controller owner
+      do
+        _ <- pure (map archive cids)
+        pure ()
+```
+
+```
+$ damlisk scan examples/vulnerable/discarded-update/discarded-update.dar --detect discarded-update
+[Medium] discarded-update Main.daml:19
+    Main:Wallet.BurnAll.update: ledger actions wrapped in `pure` are never run
+[Medium] discarded-update Main.daml:27
+    Main:Wallet.BurnEach.update: ledger actions wrapped in `pure` are never run
+2 finding(s).
+```
+
+**How it works:** Daml-LF keeps the result type of every `pure`. The detector looks for a
+binding in a `do` / `let` block whose value is `pure x` with a type that mentions `Update`, and
+whose binder is not used by any later statement.
+
+**Results on real code:** Splice and the `daml-contracts` DARs are clean.
+
+**Recommendation:** run the actions (`forA_ cids archive`, `mapA_ archive cids`,
+`sequence_ (map archive cids)`), and use `foldlA` / `forA` instead of `foldl` / `map` when the
+step is an `Update`.

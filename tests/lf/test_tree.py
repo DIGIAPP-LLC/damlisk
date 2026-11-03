@@ -1,7 +1,7 @@
 import pytest
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.tree import child_terms, find_all
+from damlisk.lf.tree import child_terms, find_all, mentions_var
 
 TRUE = lf.Expr(prim_con=lf.PrimCon.CON_TRUE)
 VAR = lf.Expr(var="x")
@@ -62,3 +62,17 @@ def test_find_all_keeps_location(root, start, expected):
     found = find_all(root, lf.Expr.App, start)
 
     assert {f.loc.range.start_line if f.loc else None for f in found} == expected
+
+
+@pytest.mark.parametrize(
+    "root,name,expected",
+    [
+        (VAR, "x", True),
+        (_app(EQUAL, TRUE, _app(EQUAL, VAR)), "x", True),
+        (_app(EQUAL, VAR), "y", False),
+        (TRUE, "x", False),
+    ],
+    ids=["leaf", "nested", "other-name", "no-vars"],
+)
+def test_mentions_var(root, name, expected):
+    assert mentions_var(root, name) is expected

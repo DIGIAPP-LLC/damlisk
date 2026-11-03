@@ -1,0 +1,55 @@
+module Main where
+
+import DA.Foldable (forA_, sequence_)
+
+template Coin
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    ensure amount > 0.0
+
+template Wallet
+  with
+    owner : Party
+  where
+    signatory owner
+
+    nonconsuming choice BurnAll : ()
+      with
+        cids : [ContractId Coin]
+      controller owner
+      do
+        _ <- pure (map archive cids)
+        pure ()
+
+    nonconsuming choice BurnEach : ()
+      with
+        cids : [ContractId Coin]
+      controller owner
+      do
+        _ <- pure (forA_ cids archive)
+        pure ()
+
+    nonconsuming choice BurnLater : ()
+      with
+        cids : [ContractId Coin]
+      controller owner
+      do
+        actions <- pure (map archive cids)
+        sequence_ actions
+
+    nonconsuming choice BurnNow : ()
+      with
+        cids : [ContractId Coin]
+      controller owner
+      do forA_ cids archive
+
+    nonconsuming choice Count : Int
+      with
+        cids : [ContractId Coin]
+      controller owner
+      do
+        total <- pure (length cids)
+        pure total

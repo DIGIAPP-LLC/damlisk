@@ -1,0 +1,35 @@
+module Main where
+
+import DA.List (head, last)
+import DA.Optional (fromSome)
+
+template Pool
+  with
+    operator : Party
+    members : [Party]
+    reserve : Decimal
+  where
+    signatory operator
+    ensure reserve > 0.0
+
+    choice Payout : Party
+      with
+        winners : [Party]
+      controller operator
+      do pure (head winners)
+
+    choice Settle : Decimal
+      with
+        price : Optional Decimal
+      controller operator
+      do pure (reserve * fromSome price)
+
+    nonconsuming choice Latest : Party
+      with
+        batch : [Party]
+      controller operator
+      do pure (last batch)
+
+    nonconsuming choice First : Party
+      controller operator
+      do pure (head members)

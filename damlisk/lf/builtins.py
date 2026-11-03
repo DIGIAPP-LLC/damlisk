@@ -40,6 +40,34 @@ def is_numeric(typ: lf.Type) -> bool:
     return typ.prim is not None and typ.prim.prim == lf.PrimType.NUMERIC
 
 
+def type_args(typ: lf.Type) -> list[lf.Type]:
+    """Return the types nested directly inside `typ` (type arguments, fields, bodies)."""
+    if typ.prim is not None:
+        return list(typ.prim.args)
+    if typ.con is not None:
+        return list(typ.con.args)
+    if typ.var is not None:
+        return list(typ.var.args)
+    if typ.syn is not None:
+        return list(typ.syn.args)
+    if typ.forall is not None:
+        return [typ.forall.body]
+    if typ.struct is not None:
+        return [field.type for field in typ.struct.fields]
+    return []
+
+
+def mentions_update(typ: lf.Type) -> bool:
+    """Return True if `typ` is or contains the `Update` type, e.g. `[Update ()]`."""
+    if typ.prim is not None and typ.prim.prim == lf.PrimType.UPDATE:
+        return True
+    nested = type_args(typ)
+    for arg in nested:
+        if mentions_update(arg):
+            return True
+    return False
+
+
 def bool_const(expr: lf.Expr) -> str | None:
     if expr.prim_con is None:
         return None

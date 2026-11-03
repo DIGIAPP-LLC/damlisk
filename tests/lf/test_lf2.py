@@ -9,6 +9,7 @@ from damlisk.lf.builtins import (
     is_compare,
     is_numeric,
     lf_name,
+    mentions_update,
     partial_name,
 )
 from damlisk.lf.lf2 import Parser23
@@ -179,3 +180,38 @@ def test_partial_name(fun, expected):
 )
 def test_compare_name(fun, expected):
     assert compare_name(fun) == expected
+
+
+UNIT = _prim(lf.PrimType.UNIT)
+UPDATE_UNIT = _prim(lf.PrimType.UPDATE, UNIT)
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (UPDATE_UNIT, True),
+        (_prim(lf.PrimType.LIST, UPDATE_UNIT), True),
+        (lf.Type(con=lf.Type.Con(None, (UPDATE_UNIT,))), True),
+        (lf.Type(var=lf.Type.Var("m", (UPDATE_UNIT,))), True),
+        (lf.Type(syn=lf.Type.Syn(None, (UPDATE_UNIT,))), True),
+        (lf.Type(forall=lf.Type.Forall((), UPDATE_UNIT)), True),
+        (lf.Type(struct=lf.Type.Struct((lf.FieldWithType("f", UPDATE_UNIT),))), True),
+        (_prim(lf.PrimType.LIST, _prim(lf.PrimType.INT64)), False),
+        (lf.Type(nat=10), False),
+        (UNIT, False),
+    ],
+    ids=[
+        "update",
+        "list-of-updates",
+        "con-argument",
+        "var-argument",
+        "synonym",
+        "forall-body",
+        "struct-field",
+        "list-of-ints",
+        "nat",
+        "unit",
+    ],
+)
+def test_mentions_update(typ, expected):
+    assert mentions_update(typ) is expected

@@ -66,3 +66,13 @@ def find_all(root: Term, kind: type[T], loc: lf.Location | None = None) -> list[
         if isinstance(content, kind):
             matches.append(Found(content, term.loc))
     return matches
+
+
+def mentions_var(root: Term, name: str) -> bool:
+    """Return True if the variable `name` appears anywhere inside `root`."""
+    terms = all_terms(root)
+    for term in terms:
+        node = term.node
+        if isinstance(node, lf.Expr) and node.var == name:
+            return True
+    return False
