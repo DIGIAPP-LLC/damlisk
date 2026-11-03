@@ -104,12 +104,12 @@ class UnusedTemplateField(AbstractDetector):
         "helper reads. It is stored and disclosed on every contract but never enforced."
     )
     WIKI_EXPLOIT_SCENARIO = (
-        "`template Campaign with acceptedToken : Text` suggests investments are limited to one "
-        "token, but `Invest` never compares the deposited token with it, so any token is accepted."
+        "`template Shop with currency : Text` suggests payments are limited to one token, but "
+        "`Buy` never compares the paid token with it, so any token is accepted."
     )
     WIKI_RECOMMENDATION = (
-        'Enforce the field where it matters (for example `assertMsg "token" (token == '
-        "acceptedToken)`) or remove it."
+        'Enforce the field where it matters (for example `assertMsg "token" (paid == '
+        "currency)`) or remove it."
     )
 
     def _detect(self) -> list[Finding]:

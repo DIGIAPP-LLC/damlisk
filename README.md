@@ -29,6 +29,7 @@ damlisk list-detectors
 | [`nonconsuming-create`](#nonconsuming-create) | High | Medium | Nonconsuming choice creates its own template without archiving `self` |
 | [`unchecked-fetch`](#unchecked-fetch) | High | Medium | Contract fetched from a choice argument and used without validation |
 | [`time-from-argument`](#time-from-argument) | Medium | Medium | Deadline logic on a caller-supplied `Time` instead of ledger time |
+| [`amount-tolerance`](#amount-tolerance) | Medium | High | `Decimal` amounts compared with `abs (a - b) < eps` instead of exactly |
 
 ### boolean-cst
 
@@ -283,7 +284,7 @@ that does not exist.
 
 | Field | Reported | Why |
 |---|---|---|
-| `acceptedToken : Text`, never compared | yes | stored, never enforced |
+| `currency : Text`, never compared | yes | stored, never enforced |
 | `owner` used in `observer owner` | no | read by the observer clause |
 | `note` returned by `pure note` | no | read by a choice |
 | `limit.cap` read after `fetch limitCid` | no | read through a fetched contract |
@@ -291,37 +292,37 @@ that does not exist.
 **Example** (`examples/vulnerable/unused-template-field/daml/Main.daml`):
 
 ```haskell
-template Campaign
+template Shop
   with
     platform : Party
     owner : Party
-    target : Decimal
-    acceptedToken : Text
+    stock : Decimal
+    currency : Text
     note : Text
   where
     signatory platform
     observer owner
-    ensure target > 0.0
+    ensure stock > 0.0
 
-    choice Invest : ContractId Campaign
+    choice Buy : ContractId Shop
       with
-        investor : Party
-        token : Text
+        buyer : Party
+        paid : Text
         amount : Decimal
         limitCid : ContractId Limit
-      controller investor, platform
+      controller buyer, platform
       do
         limit <- fetch limitCid
         assertMsg "over cap" (amount <= limit.cap)
-        create this with target = target - amount
+        create this with stock = stock - amount
 ```
 
-`Invest` never compares `token` with `acceptedToken`, so the campaign accepts any token.
+`Buy` never compares `paid` with `currency`, so the shop accepts payment in any token.
 
 ```
 $ damlisk scan examples/vulnerable/unused-template-field/unused-template-field.dar --detect unused-template-field
 [Informational] unused-template-field Main.daml:11
-    Main:Campaign: no code reads `acceptedToken`
+    Main:Shop: no code reads `currency`
 1 finding(s).
 ```
 
@@ -449,9 +450,7 @@ that resolves to one of the functions above. Results of ledger operations bound 
 (`x <- fetch …`, `x <- exercise …`) are ledger state, not caller input, so they do not carry
 the argument further.
 
-**Results on real code:** Splice and the `daml-contracts` DARs are clean: Splice uses
-`fromSomeNote` and explicit checks, and the `head` calls in `fundraising` operate on contract
-state, not on choice arguments.
+**Results on real code:** Splice is clean: it uses `fromSomeNote` and explicit checks.
 
 **Why Medium confidence:** a field counts as reaching the function if it appears anywhere in the
 call's arguments (for example inside a filter predicate), even when the list itself does not
@@ -507,7 +506,7 @@ $ damlisk scan examples/vulnerable/discarded-update/discarded-update.dar --detec
 binding in a `do` / `let` block whose value is `pure x` with a type that mentions `Update`, and
 whose binder is not used by any later statement.
 
-**Results on real code:** Splice and the `daml-contracts` DARs are clean.
+**Results on real code:** Splice is clean.
 
 **Recommendation:** run the actions (`forA_ cids archive`, `mapA_ archive cids`,
 `sequence_ (map archive cids)`), and use `foldlA` / `forA` instead of `foldl` / `map` when the
@@ -563,8 +562,8 @@ follows every helper of the main package that the choice calls and collects the 
 create. If the choice's own template is among them, it traces `self` through the same helpers;
 any use of `self` (archive, exercise, passing it on) counts as handled.
 
-**Results on real code:** Splice and the `daml-contracts` DARs are clean: none of their
-nonconsuming choices creates its own template.
+**Results on real code:** Splice is clean: none of its nonconsuming choices creates its own
+template.
 
 **Recommendation:** make the choice consuming (the default), or call `archive self` before
 creating the replacement contracts.
@@ -578,19 +577,19 @@ with the other arguments.
 **Impact:** `fetch` only proves that *some* contract of that template exists and is visible to
 the submitter. Without a check such as `tok.issuer == trusted` or `tok.owner == borrower`, the
 choice accepts a contract the caller created themselves, or one that belongs to someone else:
-self-issued collateral, another user's balance, or the wrong campaign.
+self-issued collateral, another user's balance, or the wrong account.
 
 **Example** (`examples/vulnerable/unchecked-fetch/daml/Main.daml`):
 
 ```haskell
-    nonconsuming choice Borrow : ContractId Loan
+    nonconsuming choice Borrow : ContractId Debt
       with
         borrower : Party
         collateral : ContractId Token
       controller borrower
       do
         tok <- fetch collateral
-        create Loan with bank, borrower, amount = tok.amount / 2.0
+        create Debt with bank, borrower, amount = tok.amount / 2.0
 ```
 
 The borrower issues a `Token` to themselves for 1,000,000 and borrows 500,000 against it.
@@ -615,10 +614,7 @@ derived `Eq` instances) counts as a check only if it puts the fetched data next 
 as Splice's `fetchChecked`, are not treated as raw fetches.
 
 **Results on real code:** Splice is clean (it fetches through `fetchChecked` /
-`fetchReferenceData`). `daml-contracts` has one finding, in every fundraising version:
-`InstallmentRelease_Escrow` fetches `campaignCid` and checks only `status == Completed` and the
-balance. Nothing ties the campaign to the installment, so the platform can escrow funds from a
-different campaign's balance.
+`fetchReferenceData`).
 
 **Recommendation:** compare the fetched contract with trusted data before using it
 (`assertMsg "issuer" (tok.issuer == trusted)`, matching ids or parties), or use a checked fetch
@@ -631,7 +627,7 @@ helper.
 `assertWithinDeadline` or `assertDeadlineExceeded`, directly or in a helper of the package.
 
 **Impact:** the controller decides what "now" is. Lock periods, vesting, claim windows,
-expiry and default checks are not enforced: a `currentTime` argument set in the future
+expiry and default checks are not enforced: a `now` argument set in the future
 expires a claim early, and one set in the past accepts it after its deadline.
 
 **Example** (`examples/vulnerable/time-from-argument/daml/Main.daml`):
@@ -665,12 +661,51 @@ field-flow analysis tracks the `Time` fields into ordering operators (builtins a
 instance methods such as `DA.Internal.LF:$c>=1`). The choice and every main-package helper it
 reaches are then searched for a ledger-time read.
 
-**Results on real code:** Splice is clean. `daml-contracts` has 8 findings in every
-fundraising version: `RepaymentClaim_Accept`, `RepaymentClaim_Expire`,
-`InstallmentTransfer_Accept`, `InstallmentTransfer_Withdraw`, `InstallmentRelease_Release`,
-`LoanTracker_CheckDefault`, `LoanTracker_Repay` and `LoanTracker_LoanRewardsRepay` all take
-`currentTime : Time` and never read the ledger clock. For example, the platform alone can
-expire an investor's `RepaymentClaim` or flag a loan as defaulted before the deadline.
+**Results on real code:** Splice is clean.
 
 **Recommendation:** use `assertWithinDeadline` / `assertDeadlineExceeded` /
 `isLedgerTimeLT` (they work with Canton's time bounds), or `now <- getTime`.
+
+### amount-tolerance
+
+**Amount tolerance.** It reports a comparison of an absolute value with a non-zero `Decimal`
+literal, such as `abs (outputs - inputs) < 0.0001` or `0.01 >= abs (total - expected)`.
+
+**Impact:** `Decimal` (`Numeric 10`) is exact fixed-point arithmetic, so a tolerance never
+absorbs rounding noise: it only lets the two amounts differ by up to `eps`. A split, merge,
+burn/mint or exchange that checks conservation this way can create up to `eps` tokens every
+time, and the caller can repeat it as often as they like.
+
+**Example** (`examples/vulnerable/amount-tolerance/daml/Main.daml`):
+
+```haskell
+    choice Split : [ContractId Token]
+      with
+        parts : [Decimal]
+      controller owner
+      do
+        assertMsg "conserved" (abs (sum parts - amount) < 0.0001)
+        forA parts $ \part -> create this with amount = part
+```
+
+```
+$ damlisk scan examples/vulnerable/amount-tolerance/amount-tolerance.dar --detect amount-tolerance
+[Medium] amount-tolerance Main.daml:19
+    Main:Token.Merge.update: amounts compared with tolerance 0.01, not exactly
+[Medium] amount-tolerance Main.daml:11
+    Main:Token.Split.update: amounts compared with tolerance 0.0001, not exactly
+2 finding(s).
+```
+
+`SafeSplit` (`sum parts == amount`) and `Grow` (`abs delta > 0.0`, a zero literal is an exact
+sign check) are not reported.
+
+**How it works:** every call to an ordering operator is checked for an argument that calls
+`GHC.Num` `abs` and an argument that is a non-zero `Decimal` literal. damlc wraps `abs` in
+generated aliases (`$$sc_X_13 = $cabs1 @10 ...`) and turns `0.01 >= x` into a partially
+applied helper (`$$sc_X_14 = (>=) 0.01`); both are followed.
+
+**Results on real code:** Splice is clean.
+
+**Recommendation:** compare amounts exactly (`sum outputs == sum inputs`). When a division
+leaves a remainder, assign it explicitly, e.g. to the last output or back to the sender.

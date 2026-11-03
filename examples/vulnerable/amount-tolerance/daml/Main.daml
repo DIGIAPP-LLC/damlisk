@@ -1,0 +1,45 @@
+module Main where
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    choice Split : [ContractId Token]
+      with
+        parts : [Decimal]
+      controller owner
+      do
+        assertMsg "conserved" (abs (sum parts - amount) < 0.0001)
+        forA parts $ \part -> create this with amount = part
+
+    choice Merge : ContractId Token
+      with
+        other : ContractId Token
+        expected : Decimal
+      controller owner
+      do
+        tok <- fetch other
+        archive other
+        let total = amount + tok.amount
+        assertMsg "total" (0.01 >= abs (total - expected))
+        create this with amount = expected
+
+    choice SafeSplit : [ContractId Token]
+      with
+        parts : [Decimal]
+      controller owner
+      do
+        assertMsg "conserved" (sum parts == amount)
+        forA parts $ \part -> create this with amount = part
+
+    choice Grow : ContractId Token
+      with
+        delta : Decimal
+      controller owner
+      do
+        assertMsg "positive" (abs delta > 0.0)
+        create this with amount = amount + abs delta

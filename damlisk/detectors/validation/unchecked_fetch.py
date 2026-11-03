@@ -30,7 +30,7 @@ class UncheckedFetch(AbstractDetector):
         "created or one that belongs to someone else."
     )
     WIKI_EXPLOIT_SCENARIO = (
-        "`choice Borrow with collateral do tok <- fetch collateral; create Loan with amount = "
+        "`choice Borrow with collateral do tok <- fetch collateral; create Debt with amount = "
         "tok.amount / 2.0`: the borrower issues a worthless `Token` to themselves for 1,000,000 "
         "and borrows 500,000 against it."
     )

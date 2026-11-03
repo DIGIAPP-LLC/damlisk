@@ -3,6 +3,7 @@ from dazl._gen.com.digitalasset.daml.lf.archive import daml_lf2_pb2 as pb
 from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.builtins import (
+    abs_name,
     bool_const,
     compare_name,
     demangle,
@@ -11,9 +12,11 @@ from damlisk.lf.builtins import (
     is_time,
     lf_name,
     mentions_update,
+    numeric_lit,
     order_name,
     partial_name,
     reads_time,
+    untyped,
 )
 from damlisk.lf.lf2 import Parser23
 
@@ -177,8 +180,8 @@ def test_partial_name(fun, expected):
         (lf.Expr(builtin="EQUAL"), "=="),
         (_val("DA.Internal.Prelude", "notElem"), "notElem"),
         (_val("GHC.Classes", "$$c$u002f$u003d3"), "/="),
-        (_val("FundingCampaign", "$$c$u003d$u003d15"), "=="),
-        (_val("FundingCampaign", "$u003d$u003d"), None),
+        (_val("Market", "$$c$u003d$u003d15"), "=="),
+        (_val("Market", "$u003d$u003d"), None),
         (_val("DA.List", "head"), None),
     ],
     ids=["equal", "not-elem", "not-equal-instance", "derived-instance", "user-operator", "other"],
@@ -264,3 +267,50 @@ def test_is_time(typ, expected):
 )
 def test_reads_time(module, name, expected):
     assert reads_time(_val(module, name).val) is expected
+
+
+def _ty_abs(expr):
+    return lf.Expr(ty_abs=lf.Expr.TyAbs((), lf.Expr(ty_app=lf.Expr.TyApp(expr, ()))))
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_ty_abs(lf.Expr(builtin="LESS")), "LESS"),
+        (lf.Expr(ty_app=lf.Expr.TyApp(_ty_abs(lf.Expr(builtin="EQUAL")), ())), "EQUAL"),
+        (lf.Expr(builtin="GREATER"), "GREATER"),
+    ],
+    ids=["type-abstraction", "applied-abstraction", "plain"],
+)
+def test_untyped(fun, expected):
+    assert untyped(fun).builtin == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("GHC.Num", "$$cabs1"), "abs"),
+        (_val("GHC.Num", "abs"), "abs"),
+        (_val("GHC.Num", "$$c-"), None),
+        (_val("Main", "abs"), None),
+        (lf.Expr(var="abs"), None),
+    ],
+    ids=["instance", "class-method", "minus", "user-abs", "var"],
+)
+def test_abs_name(fun, expected):
+    assert abs_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (lf.Expr(prim_lit=lf.PrimLit(numeric="0.0001000000")), "0.0001"),
+        (lf.Expr(prim_lit=lf.PrimLit(numeric="10.0000000000")), "10"),
+        (lf.Expr(prim_lit=lf.PrimLit(numeric="0.0000000000")), None),
+        (lf.Expr(prim_lit=lf.PrimLit(int64=1)), None),
+        (lf.Expr(var="eps"), None),
+    ],
+    ids=["tolerance", "whole", "zero", "int", "var"],
+)
+def test_numeric_lit(expr, expected):
+    assert numeric_lit(expr) == expected

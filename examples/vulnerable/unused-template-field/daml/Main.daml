@@ -8,29 +8,29 @@ template Limit
     signatory platform
     ensure cap > 0.0
 
-template Campaign
+template Shop
   with
     platform : Party
     owner : Party
-    target : Decimal
-    acceptedToken : Text
+    stock : Decimal
+    currency : Text
     note : Text
   where
     signatory platform
     observer owner
-    ensure target > 0.0
+    ensure stock > 0.0
 
-    choice Invest : ContractId Campaign
+    choice Buy : ContractId Shop
       with
-        investor : Party
-        token : Text
+        buyer : Party
+        paid : Text
         amount : Decimal
         limitCid : ContractId Limit
-      controller investor, platform
+      controller buyer, platform
       do
         limit <- fetch limitCid
         assertMsg "over cap" (amount <= limit.cap)
-        create this with target = target - amount
+        create this with stock = stock - amount
 
     nonconsuming choice Describe : Text
       controller owner

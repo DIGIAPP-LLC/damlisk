@@ -10,7 +10,7 @@ template Token
     signatory issuer
     observer owner
 
-template Loan
+template Debt
   with
     bank : Party
     borrower : Party
@@ -26,16 +26,16 @@ template Bank
   where
     signatory bank
 
-    nonconsuming choice Borrow : ContractId Loan
+    nonconsuming choice Borrow : ContractId Debt
       with
         borrower : Party
         collateral : ContractId Token
       controller borrower
       do
         tok <- fetch collateral
-        create Loan with bank, borrower, amount = tok.amount / 2.0
+        create Debt with bank, borrower, amount = tok.amount / 2.0
 
-    nonconsuming choice BorrowUsd : ContractId Loan
+    nonconsuming choice BorrowUsd : ContractId Debt
       with
         borrower : Party
         collateral : ContractId Token
@@ -43,9 +43,9 @@ template Bank
       do
         tok <- fetch collateral
         assertMsg "USD only" (tok.currency == "USD")
-        create Loan with bank, borrower, amount = tok.amount / 2.0
+        create Debt with bank, borrower, amount = tok.amount / 2.0
 
-    nonconsuming choice SafeBorrow : ContractId Loan
+    nonconsuming choice SafeBorrow : ContractId Debt
       with
         borrower : Party
         collateral : ContractId Token
@@ -54,7 +54,7 @@ template Bank
         tok <- fetch collateral
         assertMsg "untrusted issuer" (tok.issuer == trusted)
         assertMsg "not your token" (tok.owner == borrower)
-        create Loan with bank, borrower, amount = tok.amount / 2.0
+        create Debt with bank, borrower, amount = tok.amount / 2.0
 
     nonconsuming choice Exists : ()
       with

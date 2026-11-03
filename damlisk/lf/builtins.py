@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 from enum import Enum
 
 from dazl.damlast import daml_lf_1 as lf
@@ -10,6 +11,8 @@ EQ_RE = re.compile(r"^(?:\$c|\$dm)?(==|/=)\d*$")
 ORDER_RE = re.compile(r"^(?:\$c|\$dm)?(<|<=|>|>=)\d*$")
 ORDERS = {"LESS": "<", "LESS_EQ": "<=", "GREATER": ">", "GREATER_EQ": ">="}
 EQ_MODULE = "GHC.Classes"
+NUM_MODULE = "GHC.Num"
+ABS_RE = re.compile(r"^(?:\$c)?abs\d*$")
 TIME_READS = {
     ("DA.Internal.LF", "getTime"),
     ("DA.Internal.LF", "$cgetTime"),
@@ -101,9 +104,14 @@ def demangle(name: str) -> str:
 
 
 def untyped(fun: lf.Expr) -> lf.Expr:
-    while fun.ty_app is not None:
-        fun = fun.ty_app.expr
-    return fun
+    """Return `fun` without its type applications and type abstractions."""
+    while True:
+        if fun.ty_app is not None:
+            fun = fun.ty_app.expr
+        elif fun.ty_abs is not None:
+            fun = fun.ty_abs.body
+        else:
+            return fun
 
 
 def qual_name(val: lf.ValName) -> tuple[str, str]:
@@ -140,6 +148,27 @@ def order_name(fun: lf.Expr) -> str | None:
     if fun.builtin is not None:
         return ORDERS.get(lf_name(fun.builtin))
     return class_method(fun, ORDER_RE)
+
+
+def abs_name(fun: lf.Expr) -> str | None:
+    """Return `abs` if `fun` is the `abs` method of `Num`, or None."""
+    fun = untyped(fun)
+    if fun.val is None:
+        return None
+    module, name = qual_name(fun.val)
+    if module == NUM_MODULE and ABS_RE.match(name):
+        return "abs"
+    return None
+
+
+def numeric_lit(expr: lf.Expr) -> str | None:
+    """Return a non-zero `Decimal` literal as text (`0.0001`), or None."""
+    if expr.prim_lit is None or expr.prim_lit.numeric is None:
+        return None
+    value = Decimal(expr.prim_lit.numeric)
+    if value == 0:
+        return None
+    return format(value.normalize(), "f")
 
 
 def is_time(typ: lf.Type) -> bool:

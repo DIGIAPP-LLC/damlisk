@@ -13,7 +13,7 @@ from tests.conftest import ROOT
 
 @pytest.mark.parametrize(
     "template,expected",
-    [("Campaign", ["acceptedToken"]), ("Limit", []), ("Missing", [])],
+    [("Shop", ["currency"]), ("Limit", []), ("Missing", [])],
     ids=["unread-field", "read-through-fetch", "unknown-template"],
 )
 def test_unused_fields(unused_index, template, expected):
@@ -27,10 +27,10 @@ def test_unused_fields(unused_index, template, expected):
 @pytest.mark.parametrize(
     "ref,expected",
     [
-        (FieldRef("Main:Campaign", "note"), True),
-        (FieldRef("Main:Campaign", "owner"), True),
+        (FieldRef("Main:Shop", "note"), True),
+        (FieldRef("Main:Shop", "owner"), True),
         (FieldRef("Main:Limit", "cap"), True),
-        (FieldRef("Main:Campaign", "acceptedToken"), False),
+        (FieldRef("Main:Shop", "currency"), False),
     ],
     ids=["returned-by-choice", "observer", "fetched-contract", "never-read"],
 )
@@ -42,7 +42,7 @@ def test_detector_reports_example_violation(unused_index):
     found = UnusedTemplateField(unused_index).detect()
     rows = [(f.owner, f.line, f.message) for f in found]
 
-    assert rows == [("Main:Campaign", 11, "Main:Campaign: no code reads `acceptedToken`")]
+    assert rows == [("Main:Shop", 11, "Main:Shop: no code reads `currency`")]
 
 
 @pytest.mark.parametrize(
