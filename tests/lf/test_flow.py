@@ -164,3 +164,20 @@ def test_fetch_usage(expr, fetched, linked):
 
     assert usage.fetched == fetched
     assert usage.linked == linked
+
+
+GE = lf.Expr(builtin="GREATER_EQ")
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (app(GE, proj("arg", "now"), proj("this", "unlock")), {"now"}),
+        (let("t", proj("arg", "now"), app(GE, var("t"), var("x"))), {"now"}),
+        (app(EQUAL, proj("arg", "now"), proj("this", "unlock")), set()),
+        (app(GE, proj("this", "unlock"), var("x")), set()),
+    ],
+    ids=["direct", "let-alias", "equality", "contract-state"],
+)
+def test_ordered(expr, expected):
+    assert FieldFlow(VALUES).ordered(expr, "arg") == expected

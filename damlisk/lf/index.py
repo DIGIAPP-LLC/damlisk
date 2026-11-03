@@ -165,10 +165,15 @@ class PackageIndex:
         self.ifaces: dict[lf.TypeConName, lf.DefInterface] = {}
         self.impls: dict[lf.TypeConName, list[Implements]] = {}
         self.exceptions: dict[lf.TypeConName, DefException] = {}
+        self.records: dict[lf.TypeConName, tuple[lf.FieldWithType, ...]] = {}
         for pkg in dar.packages:
             scopes = self.scopes(pkg)
             for scope in scopes:
                 ref, mod = scope.ref, scope.module
+                for data in mod.data_types:
+                    if data.record is not None:
+                        name = lf.TypeConName(ref, data.name.segments)
+                        self.records[name] = tuple(data.record.fields)
                 self.values.update((lf.ValName(ref, v.name_with_type.name), v) for v in mod.values)
                 self.templates.update(
                     (lf.TypeConName(ref, t.tycon.segments), t) for t in mod.templates
@@ -189,6 +194,36 @@ class PackageIndex:
         scopes = self.scopes(pkg or self.dar.main)
         for scope in scopes:
             yield from scope.choices()
+
+    def arg_fields(self, decl: ChoiceDecl) -> tuple[lf.FieldWithType, ...]:
+        """Return the fields of a choice's argument record, or () if it is not a record."""
+        typ = decl.choice.arg_binder.type
+        if typ.con is None:
+            return ()
+        return self.records.get(typ.con.tycon, ())
+
+    def reachable(self, root: lf.Expr) -> list[lf.Expr]:
+        """Return `root` and the bodies of all main-package values it reaches, each once."""
+        found = [root]
+        self.follow(root, set(), found)
+        return found
+
+    def follow(self, root: lf.Expr, seen: set[lf.ValName], found: list[lf.Expr]) -> None:
+        """Append to `found` the bodies of main-package values that `root` refers to."""
+        refs = find_all(root, lf.ValName)
+        for ref in refs:
+            name = ref.node
+            if name in seen or not self.is_local(name):
+                continue
+            seen.add(name)
+            body = self.values[name].expr
+            found.append(body)
+            self.follow(body, seen, found)
+
+    def is_local(self, name: lf.ValName) -> bool:
+        """Return True if `name` is a value defined in the main package."""
+        main = package_ref(name) == self.dar.main.pkg_id
+        return main and name in self.values
 
     def template_decls(self, pkg: LfPackage | None = None) -> Iterator[TemplateDecl]:
         scopes = self.scopes(pkg or self.dar.main)

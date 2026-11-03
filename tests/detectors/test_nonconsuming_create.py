@@ -1,8 +1,8 @@
 import pytest
 
 from damlisk.detectors.validation.nonconsuming_create import (
-    Creates,
     NonconsumingCreate,
+    created_templates,
     duplicates_self,
 )
 from damlisk.lf.dar import Dar
@@ -25,10 +25,9 @@ from tests.conftest import ROOT
 )
 def test_duplicates_self(copy_index, choice, expected):
     flow = FieldFlow(copy_index.values)
-    creates = Creates(copy_index)
     decls = {decl.choice.name: decl for decl in copy_index.choices()}
 
-    assert duplicates_self(decls[choice], creates, flow) is expected
+    assert duplicates_self(decls[choice], copy_index, flow) is expected
 
 
 @pytest.mark.parametrize(
@@ -39,7 +38,7 @@ def test_duplicates_self(copy_index, choice, expected):
 def test_created_templates(copy_index, choice, expected):
     decls = {decl.choice.name: decl for decl in copy_index.choices()}
 
-    assert Creates(copy_index).templates(decls[choice].choice.update) == expected
+    assert created_templates(copy_index, decls[choice].choice.update) == expected
 
 
 def test_detector_reports_example_violations(copy_index):

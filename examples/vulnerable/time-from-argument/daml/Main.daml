@@ -1,0 +1,45 @@
+module Main where
+
+import DA.Assert (assertDeadlineExceeded)
+
+template Vesting
+  with
+    issuer : Party
+    owner : Party
+    unlock : Time
+  where
+    signatory issuer
+    observer owner
+
+    choice Claim : ()
+      with
+        now : Time
+      controller owner
+      do
+        assertMsg "still locked" (now >= unlock)
+
+    choice Extend : ContractId Vesting
+      with
+        newUnlock : Time
+      controller issuer
+      do
+        assertMsg "must be later" (newUnlock > unlock)
+        create this with unlock = newUnlock
+
+    choice SafeClaim : ()
+      controller owner
+      do
+        now <- getTime
+        assertMsg "still locked" (now >= unlock)
+
+    choice BoundClaim : ()
+      controller owner
+      do
+        assertDeadlineExceeded "unlock" unlock
+
+    choice Reschedule : ContractId Vesting
+      with
+        newUnlock : Time
+      controller issuer
+      do
+        create this with unlock = newUnlock

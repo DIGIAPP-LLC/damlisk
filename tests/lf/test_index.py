@@ -68,3 +68,29 @@ def test_known_drops_empty_locations(rng, expected):
     )
 
     assert (known(loc) is not None) is expected
+
+
+@pytest.mark.parametrize(
+    "choice,expected",
+    [("Claim", ["now"]), ("Extend", ["newUnlock"]), ("SafeClaim", []), ("Archive", [])],
+    ids=["one-field", "other-field", "unit-argument", "archive"],
+)
+def test_arg_fields(time_index, choice, expected):
+    decls = {decl.choice.name: decl for decl in time_index.choices()}
+
+    assert [field.field for field in time_index.arg_fields(decls[choice])] == expected
+
+
+@pytest.mark.parametrize(
+    "choice,minimum",
+    [("Claim", 2), ("SafeClaim", 2), ("Reschedule", 2)],
+    ids=["claim", "safe-claim", "reschedule"],
+)
+def test_reachable_follows_helpers(time_index, choice, minimum):
+    decls = {decl.choice.name: decl for decl in time_index.choices()}
+    root = decls[choice].choice.update
+    bodies = time_index.reachable(root)
+
+    assert bodies[0] is root
+    assert len(bodies) >= minimum
+    assert all(isinstance(body, lf.Expr) for body in bodies)

@@ -1,5 +1,4 @@
 from dazl.damlast import daml_lf_1 as lf
-from dazl.damlast.util import package_ref
 
 from damlisk.detectors.abstract_detector import AbstractDetector
 from damlisk.lf.builtins import type_owner
@@ -9,39 +8,21 @@ from damlisk.lf.tree import find_all
 from damlisk.output.finding import Confidence, Finding, Impact
 
 
-class Creates:
-    """Find the templates that an expression creates, following helpers of the main package."""
+def created_templates(index: PackageIndex, root: lf.Expr) -> set[str]:
+    """Return the owners (`Module:Template`) of every template `root` may create.
 
-    def __init__(self, index: PackageIndex) -> None:
-        """Remember the index whose main-package values may be followed."""
-        self.index = index
-
-    def templates(self, root: lf.Expr) -> set[str]:
-        """Return the owners (`Module:Template`) of every template `root` may create."""
-        return self.collect(root, set())
-
-    def collect(self, root: lf.Expr, seen: set[lf.ValName]) -> set[str]:
-        """Collect created templates in `root` and in the helpers it calls, once per helper."""
-        owners: set[str] = set()
-        creates = find_all(root, lf.Update.Create)
+    damlc moves `create` into generated helpers, so main-package helpers are followed.
+    """
+    owners: set[str] = set()
+    bodies = index.reachable(root)
+    for body in bodies:
+        creates = find_all(body, lf.Update.Create)
         for create in creates:
             owners.add(type_owner(create.node.template))
-        refs = find_all(root, lf.ValName)
-        for ref in refs:
-            name = ref.node
-            if name in seen or not self.is_helper(name):
-                continue
-            seen.add(name)
-            owners |= self.collect(self.index.values[name].expr, seen)
-        return owners
-
-    def is_helper(self, name: lf.ValName) -> bool:
-        """Return True if `name` is a value defined in the main package."""
-        main = package_ref(name) == self.index.dar.main.pkg_id
-        return main and name in self.index.values
+    return owners
 
 
-def duplicates_self(decl: ChoiceDecl, creates: Creates, flow: FieldFlow) -> bool:
+def duplicates_self(decl: ChoiceDecl, index: PackageIndex, flow: FieldFlow) -> bool:
     """Return True if a nonconsuming choice creates its own template and never uses `self`.
 
     Using `self` covers `archive self` and `exercise self Archive`; without it the
@@ -50,7 +31,7 @@ def duplicates_self(decl: ChoiceDecl, creates: Creates, flow: FieldFlow) -> bool
     choice = decl.choice
     if decl.iface or choice.consuming:
         return False
-    created = creates.templates(choice.update)
+    created = created_templates(index, choice.update)
     if decl.parent not in created:
         return False
     used = flow.fields(choice.update, choice.self_binder)
@@ -81,11 +62,10 @@ class NonconsumingCreate(AbstractDetector):
     def _detect(self) -> list[Finding]:
         """Report each nonconsuming choice that duplicates its own contract."""
         flow = FieldFlow(self.index.values)
-        creates = Creates(self.index)
         findings = []
         decls = self.index.choices()
         for decl in decls:
-            if duplicates_self(decl, creates, flow):
+            if duplicates_self(decl, self.index, flow):
                 message = f"{decl.owner}: creates `{decl.parent}` but never archives `self`"
                 findings.append(self.finding(decl.owner, message, decl.loc))
         return findings

@@ -7,7 +7,19 @@ from dazl.damlast.util import module_local_name, module_name
 BOOLS = {lf.PrimCon.CON_TRUE: "True", lf.PrimCon.CON_FALSE: "False"}
 ESCAPE_RE = re.compile(r"\$(?:\$|u([0-9a-f]{4}))")
 EQ_RE = re.compile(r"^(?:\$c|\$dm)?(==|/=)\d*$")
+ORDER_RE = re.compile(r"^(?:\$c|\$dm)?(<|<=|>|>=)\d*$")
+ORDERS = {"LESS": "<", "LESS_EQ": "<=", "GREATER": ">", "GREATER_EQ": ">="}
 EQ_MODULE = "GHC.Classes"
+TIME_READS = {
+    ("DA.Internal.LF", "getTime"),
+    ("DA.Internal.LF", "$cgetTime"),
+    ("DA.Time", "isLedgerTimeLT"),
+    ("DA.Time", "isLedgerTimeLE"),
+    ("DA.Time", "isLedgerTimeGT"),
+    ("DA.Time", "isLedgerTimeGE"),
+    ("DA.Assert", "assertWithinDeadline"),
+    ("DA.Assert", "assertDeadlineExceeded"),
+}
 MEMBERSHIP = {("DA.Internal.Prelude", "elem"), ("DA.Internal.Prelude", "notElem")}
 PARTIAL = {
     ("DA.List", "head"),
@@ -98,22 +110,46 @@ def qual_name(val: lf.ValName) -> tuple[str, str]:
     return str(module_name(val)), demangle(module_local_name(val))
 
 
-def eq_operator(fun: lf.Expr) -> str | None:
-    """Return `==` or `/=` if `fun` is an equality test, or None.
+def class_method(fun: lf.Expr, pattern: re.Pattern[str]) -> str | None:
+    """Return the operator of `fun` if it is a class method matching `pattern`, or None.
 
-    Accepts the `EQUAL` builtin, the `Eq` class methods of `GHC.Classes` and the derived
-    `Eq` instance methods (`$c==15`) that damlc generates in user modules.
+    Accepts the class methods of `GHC.Classes` and the instance methods (`$c==15`,
+    `$c>=1`) that damlc generates in any module.
     """
     fun = untyped(fun)
-    if fun.builtin is not None:
-        return "==" if lf_name(fun.builtin) == "EQUAL" else None
     if fun.val is None:
         return None
     module, name = qual_name(fun.val)
     if module != EQ_MODULE and not name.startswith("$c"):
         return None
-    match = EQ_RE.match(name)
+    match = pattern.match(name)
     return match[1] if match else None
+
+
+def eq_operator(fun: lf.Expr) -> str | None:
+    """Return `==` or `/=` if `fun` is an equality test (builtin or `Eq` method), or None."""
+    fun = untyped(fun)
+    if fun.builtin is not None:
+        return "==" if lf_name(fun.builtin) == "EQUAL" else None
+    return class_method(fun, EQ_RE)
+
+
+def order_name(fun: lf.Expr) -> str | None:
+    """Return `<`, `<=`, `>` or `>=` if `fun` is an ordering test (builtin or `Ord` method)."""
+    fun = untyped(fun)
+    if fun.builtin is not None:
+        return ORDERS.get(lf_name(fun.builtin))
+    return class_method(fun, ORDER_RE)
+
+
+def is_time(typ: lf.Type) -> bool:
+    """Return True if `typ` is `Time`."""
+    return typ.prim is not None and typ.prim.prim == lf.PrimType.TIMESTAMP
+
+
+def reads_time(name: lf.ValName) -> bool:
+    """Return True if value `name` reads the ledger time (`getTime`, `isLedgerTimeLT`, ...)."""
+    return qual_name(name) in TIME_READS
 
 
 def compare_name(fun: lf.Expr) -> str | None:

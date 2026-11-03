@@ -28,6 +28,7 @@ damlisk list-detectors
 | [`discarded-update`](#discarded-update) | Medium | High | Ledger actions wrapped in `pure` and never run |
 | [`nonconsuming-create`](#nonconsuming-create) | High | Medium | Nonconsuming choice creates its own template without archiving `self` |
 | [`unchecked-fetch`](#unchecked-fetch) | High | Medium | Contract fetched from a choice argument and used without validation |
+| [`time-from-argument`](#time-from-argument) | Medium | Medium | Deadline logic on a caller-supplied `Time` instead of ledger time |
 
 ### boolean-cst
 
@@ -622,3 +623,54 @@ different campaign's balance.
 **Recommendation:** compare the fetched contract with trusted data before using it
 (`assertMsg "issuer" (tok.issuer == trusted)`, matching ids or parties), or use a checked fetch
 helper.
+
+### time-from-argument
+
+**Time from argument.** It reports a choice that compares a `Time` from its argument with `<`,
+`<=`, `>` or `>=`, and never reads the ledger time: no `getTime`, `isLedgerTimeLT/LE/GT/GE`,
+`assertWithinDeadline` or `assertDeadlineExceeded`, directly or in a helper of the package.
+
+**Impact:** the controller decides what "now" is. Lock periods, vesting, claim windows,
+expiry and default checks are not enforced: a `currentTime` argument set in the future
+expires a claim early, and one set in the past accepts it after its deadline.
+
+**Example** (`examples/vulnerable/time-from-argument/daml/Main.daml`):
+
+```haskell
+    choice Claim : ()
+      with
+        now : Time
+      controller owner
+      do
+        assertMsg "still locked" (now >= unlock)
+```
+
+```
+$ damlisk scan examples/vulnerable/time-from-argument/time-from-argument.dar --detect time-from-argument
+[Medium] time-from-argument Main.daml:14
+    Main:Vesting.Claim: compares caller-supplied time `now`, not ledger time
+[Medium] time-from-argument Main.daml:21
+    Main:Vesting.Extend: compares caller-supplied time `newUnlock`, not ledger time
+2 finding(s).
+```
+
+`Extend` (`newUnlock > unlock`) is reported too: without a clock check, a vesting that already
+unlocked can be pushed back into the future. Splice's `TransferPreapproval_Renew` does the
+same comparison but first calls `assertWithinDeadline`. `SafeClaim` (`getTime`), `BoundClaim`
+(`assertDeadlineExceeded`) and `Reschedule` (stores the time without comparing it) are not
+reported.
+
+**How it works:** the argument record's field types come from the package's data types. The
+field-flow analysis tracks the `Time` fields into ordering operators (builtins and `Ord`
+instance methods such as `DA.Internal.LF:$c>=1`). The choice and every main-package helper it
+reaches are then searched for a ledger-time read.
+
+**Results on real code:** Splice is clean. `daml-contracts` has 8 findings in every
+fundraising version: `RepaymentClaim_Accept`, `RepaymentClaim_Expire`,
+`InstallmentTransfer_Accept`, `InstallmentTransfer_Withdraw`, `InstallmentRelease_Release`,
+`LoanTracker_CheckDefault`, `LoanTracker_Repay` and `LoanTracker_LoanRewardsRepay` all take
+`currentTime : Time` and never read the ledger clock. For example, the platform alone can
+expire an investor's `RepaymentClaim` or flag a loan as defaulted before the deadline.
+
+**Recommendation:** use `assertWithinDeadline` / `assertDeadlineExceeded` /
+`isLedgerTimeLT` (they work with Canton's time bounds), or `now <- getTime`.

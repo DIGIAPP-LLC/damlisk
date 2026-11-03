@@ -8,9 +8,12 @@ from damlisk.lf.builtins import (
     demangle,
     is_compare,
     is_numeric,
+    is_time,
     lf_name,
     mentions_update,
+    order_name,
     partial_name,
+    reads_time,
 )
 from damlisk.lf.lf2 import Parser23
 
@@ -217,3 +220,47 @@ UPDATE_UNIT = _prim(lf.PrimType.UPDATE, UNIT)
 )
 def test_mentions_update(typ, expected):
     assert mentions_update(typ) is expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (lf.Expr(builtin="LESS"), "<"),
+        (lf.Expr(builtin="GREATER_EQ"), ">="),
+        (_val("DA.Internal.LF", "$$c$u003e$u003d1"), ">="),
+        (_val("GHC.Classes", "$u003c$u003d"), "<="),
+        (_val("Main", "$u003c"), None),
+        (lf.Expr(builtin="EQUAL"), None),
+        (lf.Expr(var="x"), None),
+    ],
+    ids=["less", "greater-eq", "time-instance", "class-method", "user-op", "equal", "var"],
+)
+def test_order_name(fun, expected):
+    assert order_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (_prim(lf.PrimType.TIMESTAMP), True),
+        (_prim(lf.PrimType.DATE), False),
+        (_prim(lf.PrimType.OPTIONAL, _prim(lf.PrimType.TIMESTAMP)), False),
+    ],
+    ids=["time", "date", "optional-time"],
+)
+def test_is_time(typ, expected):
+    assert is_time(typ) is expected
+
+
+@pytest.mark.parametrize(
+    "module,name,expected",
+    [
+        ("DA.Internal.LF", "$$cgetTime", True),
+        ("DA.Time", "isLedgerTimeLT", True),
+        ("DA.Assert", "assertWithinDeadline", True),
+        ("DA.Time", "addRelTime", False),
+    ],
+    ids=["get-time", "ledger-time-lt", "within-deadline", "other"],
+)
+def test_reads_time(module, name, expected):
+    assert reads_time(_val(module, name).val) is expected

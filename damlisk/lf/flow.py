@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import compare_name, partial_name, untyped
+from damlisk.lf.builtins import compare_name, order_name, partial_name, untyped
 from damlisk.lf.tree import child_terms, find_all, used_later
 
 WHOLE = frozenset({"*"})
@@ -27,6 +27,7 @@ class Usage:
     partial: set[PartialUse] = field(default_factory=set)
     fetched: set[str] = field(default_factory=set)
     linked: set[str] = field(default_factory=set)
+    ordered: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -34,11 +35,12 @@ class Usage:
         self.add_sinks(other)
 
     def add_sinks(self, other: "Usage") -> None:
-        """Add only the sinks of `other`: compared, partial-function, fetched, linked fields."""
+        """Add only the sinks of `other`: every field set except the plain `fields`."""
         self.compared |= other.compared
         self.partial |= other.partial
         self.fetched |= other.fetched
         self.linked |= other.linked
+        self.ordered |= other.ordered
 
 
 def linked_fields(args: list[Usage]) -> set[str]:
@@ -89,6 +91,10 @@ class FieldFlow:
     def partial(self, expr: lf.Expr, var: str) -> set[PartialUse]:
         """Return the fields of `var` that reach a partial function such as `head` in `expr`."""
         return self.trace(expr, {var: WHOLE}).partial
+
+    def ordered(self, expr: lf.Expr, var: str) -> set[str]:
+        """Return the fields of `var` that reach `<`, `<=`, `>` or `>=` in `expr`."""
+        return self.trace(expr, {var: WHOLE}).ordered
 
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
@@ -164,12 +170,15 @@ class FieldFlow:
         usage = Usage()
         comparison = self.resolve(call.fun, compare_name)
         partial = self.resolve(call.fun, partial_name)
+        ordering = self.resolve(call.fun, order_name)
         for arg in args:
             usage.add_sinks(arg)
             if comparison is not None:
                 usage.compared |= arg.fields
             if partial is not None:
                 usage.partial |= {PartialUse(name, partial) for name in arg.fields}
+            if ordering is not None:
+                usage.ordered |= arg.fields
         if comparison is not None:
             usage.linked |= linked_fields(args)
         helper = self.helper(call.fun, visited)
