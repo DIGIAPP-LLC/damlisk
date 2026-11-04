@@ -85,6 +85,18 @@ def mentions_update(typ: lf.Type) -> bool:
     return False
 
 
+def cid_template(typ: lf.Type) -> lf.TypeConName | None:
+    """Return `T` for `ContractId T` or `[ContractId T]`, or None for other types."""
+    if typ.prim is None or not typ.prim.args:
+        return None
+    inner = typ.prim.args[0]
+    if typ.prim.prim == lf.PrimType.LIST:
+        return cid_template(inner)
+    if typ.prim.prim != lf.PrimType.CONTRACT_ID or inner.con is None:
+        return None
+    return inner.con.tycon
+
+
 def type_owner(name: lf.TypeConName) -> str:
     """Return a type's owner string in the `Module:Type` form used by template owners."""
     return f"{module_name(name)}:{module_local_name(name)}"

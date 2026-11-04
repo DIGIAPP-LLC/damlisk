@@ -6,6 +6,7 @@ from damlisk.lf.builtins import (
     abs_name,
     arith_name,
     bool_const,
+    cid_template,
     compare_name,
     demangle,
     is_compare,
@@ -332,3 +333,35 @@ def test_numeric_lit(expr, expected):
 )
 def test_arith_name(fun, expected):
     assert arith_name(fun) == expected
+
+
+TOKEN = lf.TypeConName(
+    lf.ModuleRef(lf.PackageRef("pkg"), lf.DottedName(segments=("Main",))), ("Token",)
+)
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (_prim(lf.PrimType.CONTRACT_ID, lf.Type(con=lf.Type.Con(TOKEN, ()))), TOKEN),
+        (
+            _prim(
+                lf.PrimType.LIST,
+                _prim(lf.PrimType.CONTRACT_ID, lf.Type(con=lf.Type.Con(TOKEN, ()))),
+            ),
+            TOKEN,
+        ),
+        (
+            _prim(
+                lf.PrimType.OPTIONAL,
+                _prim(lf.PrimType.CONTRACT_ID, lf.Type(con=lf.Type.Con(TOKEN, ()))),
+            ),
+            None,
+        ),
+        (_prim(lf.PrimType.CONTRACT_ID, lf.Type(var=lf.Type.Var("t", ()))), None),
+        (_prim(lf.PrimType.PARTY), None),
+    ],
+    ids=["cid", "cid-list", "optional-cid", "generic-cid", "party"],
+)
+def test_cid_template(typ, expected):
+    assert cid_template(typ) == expected

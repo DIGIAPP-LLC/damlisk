@@ -1,10 +1,6 @@
 import pytest
 
-from damlisk.detectors.validation.nonconsuming_create import (
-    NonconsumingCreate,
-    created_templates,
-    duplicates_self,
-)
+from damlisk.detectors.validation.nonconsuming_create import NonconsumingCreate, duplicates_self
 from damlisk.lf.dar import Dar
 from damlisk.lf.flow import FieldFlow
 from damlisk.lf.index import PackageIndex
@@ -38,7 +34,7 @@ def test_duplicates_self(copy_index, choice, expected):
 def test_created_templates(copy_index, choice, expected):
     decls = {decl.choice.name: decl for decl in copy_index.choices()}
 
-    assert created_templates(copy_index, decls[choice].choice.update) == expected
+    assert copy_index.created_templates(decls[choice].choice.update) == expected
 
 
 def test_detector_reports_example_violations(copy_index):

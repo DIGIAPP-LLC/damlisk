@@ -1,0 +1,59 @@
+module Main where
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+    ensure amount > 0.0
+
+    choice Merge : ContractId Token
+      with
+        other : ContractId Token
+      controller owner
+      do
+        tok <- fetch other
+        assertMsg "same owner" (tok.owner == owner)
+        create this with amount = amount + tok.amount
+
+    choice MergeAll : ContractId Token
+      with
+        others : [ContractId Token]
+      controller owner
+      do
+        toks <- forA others fetch
+        create this with amount = amount + sum (map (.amount) toks)
+
+    choice SafeMerge : ContractId Token
+      with
+        other : ContractId Token
+      controller owner
+      do
+        tok <- fetch other
+        assertMsg "same owner" (tok.owner == owner)
+        archive other
+        create this with amount = amount + tok.amount
+
+    choice SafeMergeAll : ContractId Token
+      with
+        others : [ContractId Token]
+      controller owner
+      do
+        amounts <- forA others $ \cid -> do
+          tok <- fetch cid
+          assertMsg "same owner" (tok.owner == owner)
+          archive cid
+          pure tok.amount
+        create this with amount = amount + sum amounts
+
+    choice Rebase : ContractId Token
+      with
+        ref : ContractId Token
+      controller owner
+      do
+        tok <- fetch ref
+        assertMsg "same owner" (tok.owner == owner)
+        exercise ref Archive
+        create this with issuer = tok.issuer

@@ -31,6 +31,7 @@ damlisk list-detectors
 | [`time-from-argument`](#time-from-argument) | Medium | Medium | Deadline logic on a caller-supplied `Time` instead of ledger time |
 | [`amount-tolerance`](#amount-tolerance) | Medium | High | `Decimal` amounts compared with `abs (a - b) < eps` instead of exactly |
 | [`divide-before-multiply`](#divide-before-multiply) | Medium | Medium | Result of a division multiplied, compounding its rounding error |
+| [`unconsumed-input`](#unconsumed-input) | High | Medium | Input contract of the same template read but not archived |
 
 ### boolean-cst
 
@@ -762,3 +763,54 @@ by `1e6`), and some code accepts the error on purpose, as Splice does.
 
 **Recommendation:** multiply first and divide last (`reward * stake / total`), and assign any
 remainder explicitly.
+
+### unconsumed-input
+
+**Unconsumed input.** It reports a choice that takes contract ids of its own template as
+input (`other : ContractId Token` or `others : [ContractId Token]`), uses them, creates a new
+contract of that template, and never archives or exercises a choice on the inputs.
+
+**Impact:** the inputs stay active after their value went into the new contract, so the same
+value is counted twice. A merge, consolidation or top-up becomes a mint: the owner feeds the
+same input in again and again.
+
+**Example** (`examples/vulnerable/unconsumed-input/daml/Main.daml`):
+
+```haskell
+    choice Merge : ContractId Token
+      with
+        other : ContractId Token
+      controller owner
+      do
+        tok <- fetch other
+        assertMsg "same owner" (tok.owner == owner)
+        create this with amount = amount + tok.amount
+```
+
+```
+$ damlisk scan examples/vulnerable/unconsumed-input/unconsumed-input.dar --detect unconsumed-input
+[High] unconsumed-input Main.daml:12
+    Main:Token.Merge: input `other` is read but never archived
+[High] unconsumed-input Main.daml:21
+    Main:Token.MergeAll: input `others` is read but never archived
+2 finding(s).
+```
+
+`MergeAll` (`forA others fetch`) is reported too. `SafeMerge` (`archive other`),
+`SafeMergeAll` (`archive cid` inside `forA`) and `Rebase` (`exercise ref Archive`) are not
+reported.
+
+**How it works:** the argument fields typed `ContractId T` or `[ContractId T]`, where `T` is
+the choice's own template, are traced with the field-flow analysis. A field counts as consumed
+when it reaches the contract id of an `exercise` (`archive` compiles to `exercise … Archive`).
+Functions passed to `forA`, `mapA`, `map` and similar calls are followed with their parameter
+bound to the list, so `forA_ others archive` and `forA others (\cid -> archive cid)` count.
+The choice must also create its own template, directly or through a main-package helper.
+
+**Results on real code:** Splice is clean.
+
+**Why Medium confidence:** any exercise counts as consuming, including a nonconsuming one, and
+an input used only as a reference (never added to the new contract) is still reported.
+
+**Recommendation:** archive every input after reading it (`archive other`,
+`forA_ others archive`), or exercise a consuming choice on it.

@@ -12,6 +12,7 @@ from damlisk.detectors.validation.nonconsuming_create import NonconsumingCreate
 from damlisk.detectors.validation.partial_function import PartialFunction
 from damlisk.detectors.validation.time_argument import TimeFromArgument
 from damlisk.detectors.validation.unchecked_fetch import UncheckedFetch
+from damlisk.detectors.validation.unconsumed_input import UnconsumedInput
 
 DETECTORS: tuple[type[AbstractDetector], ...] = (
     BooleanConstant,
@@ -27,4 +28,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     TimeFromArgument,
     AmountTolerance,
     DivideBeforeMultiply,
+    UnconsumedInput,
 )

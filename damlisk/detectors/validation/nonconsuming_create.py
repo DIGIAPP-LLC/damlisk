@@ -1,25 +1,7 @@
-from dazl.damlast import daml_lf_1 as lf
-
 from damlisk.detectors.abstract_detector import AbstractDetector
-from damlisk.lf.builtins import type_owner
 from damlisk.lf.flow import FieldFlow
 from damlisk.lf.index import ChoiceDecl, PackageIndex
-from damlisk.lf.tree import find_all
 from damlisk.output.finding import Confidence, Finding, Impact
-
-
-def created_templates(index: PackageIndex, root: lf.Expr) -> set[str]:
-    """Return the owners (`Module:Template`) of every template `root` may create.
-
-    damlc moves `create` into generated helpers, so main-package helpers are followed.
-    """
-    owners: set[str] = set()
-    bodies = index.reachable(root)
-    for body in bodies:
-        creates = find_all(body, lf.Update.Create)
-        for create in creates:
-            owners.add(type_owner(create.node.template))
-    return owners
 
 
 def duplicates_self(decl: ChoiceDecl, index: PackageIndex, flow: FieldFlow) -> bool:
@@ -31,7 +13,7 @@ def duplicates_self(decl: ChoiceDecl, index: PackageIndex, flow: FieldFlow) -> b
     choice = decl.choice
     if decl.iface or choice.consuming:
         return False
-    created = created_templates(index, choice.update)
+    created = index.created_templates(choice.update)
     if decl.parent not in created:
         return False
     used = flow.fields(choice.update, choice.self_binder)

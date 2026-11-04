@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from dazl.damlast import daml_lf_1 as lf
 from dazl.damlast.util import module_local_name, package_ref
 
+from damlisk.lf.builtins import type_owner
 from damlisk.lf.dar import Dar, LfPackage
 from damlisk.lf.lf2 import DefException, Implements
 from damlisk.lf.tree import find_all
@@ -219,6 +220,19 @@ class PackageIndex:
             body = self.values[name].expr
             found.append(body)
             self.follow(body, seen, found)
+
+    def created_templates(self, root: lf.Expr) -> set[str]:
+        """Return the owners (`Module:Template`) of every template `root` may create.
+
+        damlc moves `create` into generated helpers, so main-package helpers are followed.
+        """
+        owners: set[str] = set()
+        bodies = self.reachable(root)
+        for body in bodies:
+            creates = find_all(body, lf.Update.Create)
+            for create in creates:
+                owners.add(type_owner(create.node.template))
+        return owners
 
     def is_local(self, name: lf.ValName) -> bool:
         """Return True if `name` is a value defined in the main package."""

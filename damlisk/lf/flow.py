@@ -28,6 +28,7 @@ class Usage:
     fetched: set[str] = field(default_factory=set)
     linked: set[str] = field(default_factory=set)
     ordered: set[str] = field(default_factory=set)
+    consumed: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -41,6 +42,25 @@ class Usage:
         self.fetched |= other.fetched
         self.linked |= other.linked
         self.ordered |= other.ordered
+        self.consumed |= other.consumed
+
+
+def exercised(update: lf.Update) -> lf.Expr | None:
+    """Return the contract id that `update` exercises a choice on, or None."""
+    if update.exercise is not None:
+        return update.exercise.cid
+    if update.exercise_interface is not None:
+        return update.exercise_interface.cid
+    if update.soft_exercise is not None:
+        return update.soft_exercise.cid
+    return None
+
+
+def peel(expr: lf.Expr) -> lf.Expr:
+    """Return the body of `expr` under all its lambdas."""
+    while expr.abs is not None:
+        expr = expr.abs.body
+    return expr
 
 
 def linked_fields(args: list[Usage]) -> set[str]:
@@ -96,6 +116,10 @@ class FieldFlow:
         """Return the fields of `var` that reach `<`, `<=`, `>` or `>=` in `expr`."""
         return self.trace(expr, {var: WHOLE}).ordered
 
+    def consumed(self, expr: lf.Expr, var: str) -> set[str]:
+        """Return the contract-id fields of `var` that `expr` exercises a choice on (`archive`)."""
+        return self.trace(expr, {var: WHOLE}).consumed
+
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
 
@@ -109,7 +133,11 @@ class FieldFlow:
         if isinstance(node, lf.Update):
             if node.block is not None:
                 return self.trace_block(node.block, aliases, visited, False)
-            return self.trace_children(node, aliases, visited)
+            usage = self.trace_children(node, aliases, visited)
+            cid = exercised(node)
+            if cid is not None:
+                usage.consumed |= self.trace(cid, aliases, visited).fields
+            return usage
         if node.var is not None:
             return Usage(fields=set(aliases.get(node.var, ())))
         if node.rec_proj is not None:
@@ -181,6 +209,7 @@ class FieldFlow:
                 usage.ordered |= arg.fields
         if comparison is not None:
             usage.linked |= linked_fields(args)
+        usage.merge(self.trace_callbacks(call, args, aliases, visited))
         helper = self.helper(call.fun, visited)
         if helper is None:
             usage.merge(self.trace(call.fun, aliases, visited))
@@ -198,6 +227,43 @@ class FieldFlow:
             usage.merge(self.trace(helper.body, inner, helper.visited(visited)))
         return usage
 
+    def trace_callbacks(
+        self, call: lf.Expr.App, args: list[Usage], aliases: Aliases, visited: Visited
+    ) -> Usage:
+        """Trace the functions passed to a higher-order call such as `forA cids (\\c -> ...)`.
+
+        The first parameter of each callback stands for the elements of the other arguments,
+        so `forA cids archive` uses `cids` the way `archive` uses its parameter.
+        """
+        usage = Usage()
+        inputs: set[str] = set()
+        callbacks: list[Helper] = []
+        for pos, arg in enumerate(call.args):
+            callback = self.callback(arg, visited)
+            if callback is None:
+                inputs |= args[pos].fields
+            else:
+                callbacks.append(callback)
+        if not inputs:
+            return usage
+        for callback in callbacks:
+            params = callback.params(1)
+            if params:
+                scope = dict(aliases)
+                scope[params[0]] = frozenset(inputs)
+                usage.merge(self.trace(callback.body, scope, callback.visited(visited)))
+        return usage
+
+    def callback(self, arg: lf.Expr, visited: Visited) -> Helper | None:
+        """Return `arg` as a callback: a lambda, or a helper that runs a ledger action."""
+        fun = untyped(arg)
+        if fun.abs is not None:
+            return Helper(None, fun)
+        helper = self.helper(fun, visited)
+        if helper is None or peel(helper.body).update is None:
+            return None
+        return helper
+
     def fetches(self, expr: lf.Expr) -> bool:
         """Return True if `expr` is `fetch cid`, written inline or as a call to a fetch helper.
 
@@ -208,8 +274,7 @@ class FieldFlow:
             if helper is None:
                 return False
             expr = helper.body
-        while expr.abs is not None:
-            expr = expr.abs.body
+        expr = peel(expr)
         return expr.update is not None and expr.update.fetch is not None
 
     def helper(self, fun: lf.Expr, visited: Visited) -> Helper | None:

@@ -1,7 +1,7 @@
 import pytest
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.flow import THIS, FieldFlow, Usage, linked_fields
+from damlisk.lf.flow import THIS, FieldFlow, Usage, exercised, linked_fields, peel
 
 REF = lf.ModuleRef(lf.PackageRef("pkg"), lf.DottedName(segments=("Main",)))
 EQUAL = lf.Expr(builtin="EQUAL")
@@ -181,3 +181,63 @@ GE = lf.Expr(builtin="GREATER_EQ")
 )
 def test_ordered(expr, expected):
     assert FieldFlow(VALUES).ordered(expr, "arg") == expected
+
+
+def exercise(cid):
+    return lf.Expr(update=lf.Update(exercise=lf.Update.Exercise(None, "Archive", cid, var("u"))))
+
+
+def iface_exercise(cid):
+    exe = lf.Update.ExerciseInterface(None, cid, var("u"), None)
+    return lf.Expr(update=lf.Update(exercise_interface=exe))
+
+
+FOR_A = val("forA")
+CONSUME_VALUES = dict([helper("archiveTok", lam(["cid"], exercise(var("cid"))))]) | FETCH_VALUES
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [(exercise(var("c")), "c"), (iface_exercise(var("c")), "c"), (fetch(var("c")), None)],
+    ids=["template", "interface", "fetch"],
+)
+def test_exercised(expr, expected):
+    cid = exercised(expr.update)
+
+    assert (cid.var if cid is not None else None) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [(lam(["a"], lam(["b"], var("x"))), "x"), (lam(["a"], var("y")), "y"), (var("z"), "z")],
+    ids=["nested", "single", "no-lambda"],
+)
+def test_peel(expr, expected):
+    assert peel(expr).var == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (exercise(proj("arg", "other")), {"other"}),
+        (app(val("archiveTok"), proj("arg", "other")), {"other"}),
+        (app(FOR_A, proj("arg", "others"), val("archiveTok")), {"others"}),
+        (app(FOR_A, proj("arg", "others"), lam(["c"], exercise(var("c")))), {"others"}),
+        (app(FOR_A, proj("arg", "others"), val("fetchTok")), set()),
+        (app(FOR_A, proj("arg", "others"), val("useArg")), set()),
+        (exercise(proj("this", "cid")), set()),
+    ],
+    ids=[
+        "inline",
+        "helper",
+        "point-free-callback",
+        "lambda-callback",
+        "fetch-callback",
+        "pure-helper",
+        "contract-field",
+    ],
+)
+def test_consumed(expr, expected):
+    values = CONSUME_VALUES | VALUES
+
+    assert FieldFlow(values).consumed(expr, "arg") == expected
