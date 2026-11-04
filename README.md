@@ -33,6 +33,7 @@ damlisk list-detectors
 | [`divide-before-multiply`](#divide-before-multiply) | Medium | Medium | Result of a division multiplied, compounding its rounding error |
 | [`unconsumed-input`](#unconsumed-input) | High | Medium | Input contract of the same template read but not archived |
 | [`aborting-choice`](#aborting-choice) | Informational | High | Choice whose body always aborts |
+| [`hash-concat-collision`](#hash-concat-collision) | Medium | Medium | `sha256` of texts joined without a separator |
 
 ### boolean-cst
 
@@ -872,3 +873,57 @@ although the choice can no longer run.
 
 **Recommendation:** implement or remove the choice. If it is kept only for upgrade
 compatibility, mark it deprecated in its documentation and name the replacement choice.
+
+### hash-concat-collision
+
+**Hash of joined texts.** It reports `sha256` / `keccak256` applied to texts glued with `<>`
+or `implode` where two variable parts touch, with no literal separator between them.
+
+**Impact:** `"ab" <> "c"` and `"a" <> "bc"` are the same text, so different inputs share one
+hash. A commitment, secret or id built this way can be matched by inputs nobody committed
+to: one voucher secret opens another voucher, or two requests get the same id.
+
+**Example** (`examples/vulnerable/hash-concat-collision/daml/Main.daml`):
+
+```haskell
+    choice Redeem : ContractId Voucher
+      with
+        claimed : Text
+      controller holder
+      do
+        assertMsg "bad code" (T.sha256 (code <> batch) == claimed)
+        create this with digest = claimed
+
+    choice Seal : ContractId Voucher
+      controller issuer
+      do
+        create this with digest = T.sha256 (T.implode [code, batch])
+```
+
+```
+$ damlisk scan examples/vulnerable/hash-concat-collision/hash-concat-collision.dar --detect hash-concat-collision
+[Medium] hash-concat-collision Main.daml:47
+    Main:Voucher.Commit.update: hashed text joins parts without a separator
+[Medium] hash-concat-collision Main.daml:16
+    Main:Voucher.Redeem.update: hashed text joins parts without a separator
+[Medium] hash-concat-collision Main.daml:24
+    Main:Voucher.Seal.update: hashed text joins parts without a separator
+3 finding(s).
+```
+
+`Commit` hashes `let payload = code <> batch`. `SafeRedeem` (`code <> "|" <> batch`),
+`SafeSeal` (`T.intercalate "|" [code, batch]`) and `Stamp` (`"voucher:" <> code`) are not
+reported.
+
+**How it works:** the hashed argument is split into parts through `APPEND_TEXT`,
+`IMPLODE_TEXT` over a list literal, partially applied helpers such as
+`$$sc_X_10 = (<>) "|"` and `let` variables. A finding needs two neighbouring parts that are
+both non-literal.
+
+**Results on real code:** Splice is clean. `Splice.Amulet.CryptoHash` hashes
+`intercalate "|" (show (length ts) :: ts)`: the parts are separated and length-prefixed,
+and the elements are themselves hex digests that cannot contain `|`.
+
+**Recommendation:** put a separator that cannot occur in the parts between them
+(`intercalate "|"`), or prefix each part with its length. Hash a part first if it may contain
+the separator.

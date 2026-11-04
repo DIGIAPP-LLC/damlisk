@@ -9,15 +9,18 @@ from damlisk.lf.builtins import (
     cid_template,
     compare_name,
     demangle,
+    hash_name,
     is_compare,
     is_numeric,
     is_time,
+    join_name,
     lf_name,
     mentions_update,
     numeric_lit,
     order_name,
     partial_name,
     reads_time,
+    text_lit,
     untyped,
 )
 from damlisk.lf.lf2 import Parser23
@@ -365,3 +368,46 @@ TOKEN = lf.TypeConName(
 )
 def test_cid_template(typ, expected):
     assert cid_template(typ) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (lf.Expr(builtin="SHA256_TEXT"), "sha256"),
+        (lf.Expr(builtin="KECCAK256_TEXT"), "keccak256"),
+        (_val("DA.Text", "sha256"), "sha256"),
+        (_val("Main", "sha256"), None),
+        (lf.Expr(builtin="APPEND_TEXT"), None),
+        (lf.Expr(var="sha256"), None),
+    ],
+    ids=["builtin", "keccak", "library", "user-sha256", "append", "var"],
+)
+def test_hash_name(fun, expected):
+    assert hash_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (lf.Expr(builtin="APPEND_TEXT"), "<>"),
+        (lf.Expr(builtin="IMPLODE_TEXT"), "implode"),
+        (lf.Expr(builtin="SHA256_TEXT"), None),
+        (_val("DA.Text", "implode"), None),
+    ],
+    ids=["append", "implode", "hash", "val"],
+)
+def test_join_name(fun, expected):
+    assert join_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (lf.Expr(prim_lit=lf.PrimLit(text="|")), "|"),
+        (lf.Expr(prim_lit=lf.PrimLit(int64=1)), None),
+        (lf.Expr(var="sep"), None),
+    ],
+    ids=["text", "int", "var"],
+)
+def test_text_lit(expr, expected):
+    assert text_lit(expr) == expected

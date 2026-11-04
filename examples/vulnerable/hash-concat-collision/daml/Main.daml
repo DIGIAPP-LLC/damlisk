@@ -1,0 +1,51 @@
+module Main where
+
+import DA.Text qualified as T
+
+template Voucher
+  with
+    issuer : Party
+    holder : Party
+    code : Text
+    batch : Text
+    digest : Text
+  where
+    signatory issuer
+    observer holder
+
+    choice Redeem : ContractId Voucher
+      with
+        claimed : Text
+      controller holder
+      do
+        assertMsg "bad code" (T.sha256 (code <> batch) == claimed)
+        create this with digest = claimed
+
+    choice Seal : ContractId Voucher
+      controller issuer
+      do
+        create this with digest = T.sha256 (T.implode [code, batch])
+
+    choice SafeRedeem : ContractId Voucher
+      with
+        claimed : Text
+      controller holder
+      do
+        assertMsg "bad code" (T.sha256 (code <> "|" <> batch) == claimed)
+        create this with digest = claimed
+
+    choice SafeSeal : ContractId Voucher
+      controller issuer
+      do
+        create this with digest = T.sha256 (T.intercalate "|" [code, batch])
+
+    choice Stamp : ContractId Voucher
+      controller issuer
+      do
+        create this with digest = T.sha256 ("voucher:" <> code)
+
+    choice Commit : ContractId Voucher
+      controller issuer
+      do
+        let payload = code <> batch
+        create this with digest = T.sha256 payload

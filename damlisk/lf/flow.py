@@ -304,3 +304,17 @@ class FieldFlow:
             seen.add(name)
             body = self.values[name].expr
             fun = body.app.fun if body.app is not None else body
+
+    def call_args(self, call: lf.Expr.App) -> list[lf.Expr]:
+        """Return the arguments of `call`, including those fixed by a partially applied helper.
+
+        damlc compiles `0.01 >= abs d` to `$$sc_X_14 (abs d)` with `$$sc_X_14 = (>=) 0.01`.
+        """
+        args = list(call.args)
+        fun = untyped(call.fun)
+        if fun.val is None or fun.val not in self.values:
+            return args
+        body = self.values[fun.val].expr
+        if body.app is None:
+            return args
+        return list(body.app.args) + args

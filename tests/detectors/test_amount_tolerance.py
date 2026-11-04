@@ -1,7 +1,7 @@
 import pytest
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.detectors.validation.amount_tolerance import AmountTolerance, call_args, tolerance
+from damlisk.detectors.validation.amount_tolerance import AmountTolerance, tolerance
 from damlisk.lf.builtins import numeric_lit
 from damlisk.lf.dar import Dar
 from damlisk.lf.flow import FieldFlow
@@ -58,7 +58,7 @@ def test_tolerance(eps_index, owner, expected):
 def test_call_args(fun, expected):
     call = lf.Expr.App(fun, (var("d"),))
 
-    args = call_args(FieldFlow(VALUES), call)
+    args = FieldFlow(VALUES).call_args(call)
 
     assert [numeric_lit(arg) for arg in args] == expected
 

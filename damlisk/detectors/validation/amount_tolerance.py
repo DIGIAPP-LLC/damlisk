@@ -1,25 +1,10 @@
 from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.detectors.abstract_detector import AbstractDetector
-from damlisk.lf.builtins import abs_name, numeric_lit, order_name, untyped
+from damlisk.lf.builtins import abs_name, numeric_lit, order_name
 from damlisk.lf.flow import FieldFlow
 from damlisk.lf.tree import find_all
 from damlisk.output.finding import Confidence, Finding, Impact
-
-
-def call_args(flow: FieldFlow, call: lf.Expr.App) -> list[lf.Expr]:
-    """Return the arguments of `call`, including those fixed by a partially applied helper.
-
-    damlc compiles `0.01 >= abs d` to `$$sc_X_14 (abs d)` with `$$sc_X_14 = (>=) 0.01`.
-    """
-    args = list(call.args)
-    fun = untyped(call.fun)
-    if fun.val is None or fun.val not in flow.values:
-        return args
-    body = flow.values[fun.val].expr
-    if body.app is None:
-        return args
-    return list(body.app.args) + args
 
 
 def tolerance(flow: FieldFlow, call: lf.Expr.App) -> str | None:
@@ -28,7 +13,7 @@ def tolerance(flow: FieldFlow, call: lf.Expr.App) -> str | None:
         return None
     absolute = False
     limits = []
-    args = call_args(flow, call)
+    args = flow.call_args(call)
     for arg in args:
         if arg.app is not None and flow.resolve(arg.app.fun, abs_name) is not None:
             absolute = True

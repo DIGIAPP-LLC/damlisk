@@ -15,6 +15,9 @@ NUM_MODULE = "GHC.Num"
 ABS_RE = re.compile(r"^(?:\$c)?abs\d*$")
 ARITH_RE = re.compile(r"^(?:\$c)?(\*|/)\d*$")
 ARITH = {"MUL_INT64": "*", "MUL_NUMERIC": "*", "DIV_INT64": "/", "DIV_NUMERIC": "/"}
+HASHES = {"SHA256_TEXT": "sha256", "SHA256_HEX": "sha256", "KECCAK256_TEXT": "keccak256"}
+HASH_VALS = {("DA.Text", "sha256"), ("DA.Crypto.Text", "sha256"), ("DA.Crypto.Text", "keccak256")}
+JOINS = {"APPEND_TEXT": "<>", "IMPLODE_TEXT": "implode"}
 TIME_READS = {
     ("DA.Internal.LF", "getTime"),
     ("DA.Internal.LF", "$cgetTime"),
@@ -235,3 +238,31 @@ def partial_name(fun: lf.Expr) -> str | None:
     if (module, name) in PARTIAL:
         return name
     return None
+
+
+def hash_name(fun: lf.Expr) -> str | None:
+    """Return `sha256` or `keccak256` if `fun` hashes text (builtin or library value), or None."""
+    fun = untyped(fun)
+    if fun.builtin is not None:
+        return HASHES.get(lf_name(fun.builtin))
+    if fun.val is None:
+        return None
+    module, name = qual_name(fun.val)
+    if (module, name) in HASH_VALS:
+        return name
+    return None
+
+
+def join_name(fun: lf.Expr) -> str | None:
+    """Return `<>` if `fun` appends two texts, `implode` if it joins a list of texts, or None."""
+    fun = untyped(fun)
+    if fun.builtin is None:
+        return None
+    return JOINS.get(lf_name(fun.builtin))
+
+
+def text_lit(expr: lf.Expr) -> str | None:
+    """Return the value of a `Text` literal, or None for other expressions."""
+    if expr.prim_lit is None:
+        return None
+    return expr.prim_lit.text
