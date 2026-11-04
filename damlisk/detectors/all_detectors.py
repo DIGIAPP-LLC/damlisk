@@ -5,6 +5,7 @@ from damlisk.detectors.hygiene.aborting_choice import AbortingChoice
 from damlisk.detectors.hygiene.boolean_cst import BooleanConstant
 from damlisk.detectors.hygiene.boolean_equal import BooleanEqual
 from damlisk.detectors.hygiene.discarded_update import DiscardedUpdate
+from damlisk.detectors.hygiene.tautological_compare import TautologicalCompare
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
 from damlisk.detectors.validation.amount_tolerance import AmountTolerance
 from damlisk.detectors.validation.divide_multiply import DivideBeforeMultiply
@@ -35,4 +36,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     AbortingChoice,
     HashConcatCollision,
     TimeEquality,
+    TautologicalCompare,
 )

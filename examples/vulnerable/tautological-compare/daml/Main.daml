@@ -1,0 +1,44 @@
+module Main where
+
+template Swap
+  with
+    maker : Party
+    taker : Party
+    amount : Decimal
+    price : Decimal
+  where
+    signatory maker
+    observer taker
+    ensure amount > 0.0 && price >= price
+
+    choice Settle : ()
+      with
+        payer : Party
+      controller taker
+      do
+        assertMsg "payer is taker" (payer == payer)
+        pure ()
+
+    choice Reprice : ContractId Swap
+      with
+        newPrice : Decimal
+      controller maker
+      do
+        assertMsg "price changed" (newPrice /= newPrice)
+        create this with price = newPrice
+
+    choice SafeSettle : ()
+      with
+        payer : Party
+      controller taker
+      do
+        assertMsg "payer is taker" (payer == taker)
+        pure ()
+
+    choice SafeReprice : ContractId Swap
+      with
+        newPrice : Decimal
+      controller maker
+      do
+        assertMsg "price changed" (newPrice /= price)
+        create this with price = newPrice

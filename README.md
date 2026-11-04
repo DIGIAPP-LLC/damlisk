@@ -35,6 +35,7 @@ damlisk list-detectors
 | [`aborting-choice`](#aborting-choice) | Informational | High | Choice whose body always aborts |
 | [`hash-concat-collision`](#hash-concat-collision) | Medium | Medium | `sha256` of texts joined without a separator |
 | [`time-equality`](#time-equality) | Medium | High | Ledger time compared with `==` or `/=` |
+| [`tautological-compare`](#tautological-compare) | Medium | High | Value compared with itself (`payer == payer`) |
 
 ### boolean-cst
 
@@ -983,3 +984,56 @@ of them as an argument is reported.
 **Recommendation:** use an ordering (`now >= closesAt`), or `assertDeadlineExceeded` /
 `assertWithinDeadline` / `isLedgerTimeGE`, which also work when the ledger time is only
 known within bounds.
+
+### tautological-compare
+
+**Value compared with itself.** It reports `==`, `/=`, `<`, `<=`, `>`, `>=` whose two
+operands are the same variable or the same field of the same record.
+
+**Impact:** the result is fixed (`==`, `<=`, `>=` always True; `/=`, `<`, `>` always False).
+This is almost always a typo for another field, so the check the author meant is missing: a
+guard that always passes lets anyone through, one that always fails blocks the choice.
+
+**Example** (`examples/vulnerable/tautological-compare/daml/Main.daml`):
+
+```haskell
+    ensure amount > 0.0 && price >= price
+
+    choice Settle : ()
+      with
+        payer : Party
+      controller taker
+      do
+        assertMsg "payer is taker" (payer == payer)
+        pure ()
+
+    choice Reprice : ContractId Swap
+      with
+        newPrice : Decimal
+      controller maker
+      do
+        assertMsg "price changed" (newPrice /= newPrice)
+        create this with price = newPrice
+```
+
+```
+$ damlisk scan examples/vulnerable/tautological-compare/tautological-compare.dar --detect tautological-compare
+[Medium] tautological-compare Main.daml:22
+    Main:Swap.Reprice.update: value compared with itself by `/=`, always False
+[Medium] tautological-compare Main.daml:14
+    Main:Swap.Settle.update: value compared with itself by `==`, always True
+[Medium] tautological-compare Main.daml:12
+    Main:Swap.precond: value compared with itself by `>=`, always True
+3 finding(s).
+```
+
+`SafeSettle` (`payer == taker`) and `SafeReprice` (`newPrice /= price`) are not reported.
+
+**How it works:** damlc binds each field read once (`let ds4 = arg.newPrice`), so a field
+compared with itself becomes the same variable on both sides. Operators are found through
+builtins, `Eq`/`Ord` methods and alias helpers. The derived `Eq` instances compare `a1` with
+`b1` and are not reported.
+
+**Results on real code:** Splice is clean.
+
+**Recommendation:** compare with the intended value, or remove the check.
