@@ -34,6 +34,7 @@ damlisk list-detectors
 | [`unconsumed-input`](#unconsumed-input) | High | Medium | Input contract of the same template read but not archived |
 | [`aborting-choice`](#aborting-choice) | Informational | High | Choice whose body always aborts |
 | [`hash-concat-collision`](#hash-concat-collision) | Medium | Medium | `sha256` of texts joined without a separator |
+| [`time-equality`](#time-equality) | Medium | High | Ledger time compared with `==` or `/=` |
 
 ### boolean-cst
 
@@ -927,3 +928,58 @@ and the elements are themselves hex digests that cannot contain `|`.
 **Recommendation:** put a separator that cannot occur in the parts between them
 (`intercalate "|"`), or prefix each part with its length. Hash a part first if it may contain
 the separator.
+
+### time-equality
+
+**Ledger time compared for equality.** It reports `==` or `/=` where one operand is the
+ledger time read with `getTime` (or a `let` alias of it).
+
+**Impact:** ledger time has microsecond resolution and the submitting participant picks it
+within the allowed skew, so it practically never equals a given instant. `now == t` is
+always False, so a choice that requires it can never run; `now /= t` is always True, so a
+guard built on it never stops anything.
+
+**Example** (`examples/vulnerable/time-equality/daml/Main.daml`):
+
+```haskell
+    choice Close : ()
+      controller seller
+      do
+        now <- getTime
+        assertMsg "not closed yet" (now == closesAt)
+
+    choice Bid : ContractId Auction
+      with
+        amount : Decimal
+      controller bidder
+      do
+        now <- getTime
+        if now /= closesAt
+          then create this with price = amount
+          else abort "closed"
+```
+
+```
+$ damlisk scan examples/vulnerable/time-equality/time-equality.dar --detect time-equality
+[Medium] time-equality Main.daml:19
+    Main:Auction.Bid.update: ledger time compared with `/=`
+[Medium] time-equality Main.daml:13
+    Main:Auction.Close.update: ledger time compared with `==`
+2 finding(s).
+```
+
+`SafeClose` (`now >= closesAt`) and `Extend` (`newClose /= closesAt`, two stored times, no
+ledger time) are not reported.
+
+**How it works:** variables bound to `getTime` (the `get_time` update, `getTime` /
+`$cgetTime`, or a compiler helper wrapping them) and their `let` aliases are collected per
+body; any equality test (`EQUAL`, `==` / `/=` methods, partially applied helpers) taking one
+of them as an argument is reported.
+
+**Results on real code:** Splice is clean: 17 bodies in `splice-amulet` and
+`splice-wallet-payments` read the ledger time, and all of them use ordering comparisons or
+`isLedgerTime*` helpers.
+
+**Recommendation:** use an ordering (`now >= closesAt`), or `assertDeadlineExceeded` /
+`assertWithinDeadline` / `isLedgerTimeGE`, which also work when the ledger time is only
+known within bounds.

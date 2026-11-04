@@ -28,6 +28,7 @@ TIME_READS = {
     ("DA.Assert", "assertWithinDeadline"),
     ("DA.Assert", "assertDeadlineExceeded"),
 }
+CLOCKS = {("DA.Internal.LF", "getTime"), ("DA.Internal.LF", "$cgetTime")}
 MEMBERSHIP = {("DA.Internal.Prelude", "elem"), ("DA.Internal.Prelude", "notElem")}
 PARTIAL = {
     ("DA.List", "head"),
@@ -266,3 +267,11 @@ def text_lit(expr: lf.Expr) -> str | None:
     if expr.prim_lit is None:
         return None
     return expr.prim_lit.text
+
+
+def clock_name(fun: lf.Expr) -> str | None:
+    """Return `getTime` if `fun` is the library action that reads the ledger time, or None."""
+    fun = untyped(fun)
+    if fun.val is not None and qual_name(fun.val) in CLOCKS:
+        return "getTime"
+    return None

@@ -1,0 +1,41 @@
+module Main where
+
+template Auction
+  with
+    seller : Party
+    bidder : Party
+    closesAt : Time
+    price : Decimal
+  where
+    signatory seller
+    observer bidder
+
+    choice Close : ()
+      controller seller
+      do
+        now <- getTime
+        assertMsg "not closed yet" (now == closesAt)
+
+    choice Bid : ContractId Auction
+      with
+        amount : Decimal
+      controller bidder
+      do
+        now <- getTime
+        if now /= closesAt
+          then create this with price = amount
+          else abort "closed"
+
+    choice SafeClose : ()
+      controller seller
+      do
+        now <- getTime
+        assertMsg "not closed yet" (now >= closesAt)
+
+    choice Extend : ContractId Auction
+      with
+        newClose : Time
+      controller seller
+      do
+        assertMsg "same close" (newClose /= closesAt)
+        create this with closesAt = newClose

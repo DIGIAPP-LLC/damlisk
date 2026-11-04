@@ -7,6 +7,7 @@ from damlisk.lf.builtins import (
     arith_name,
     bool_const,
     cid_template,
+    clock_name,
     compare_name,
     demangle,
     hash_name,
@@ -411,3 +412,18 @@ def test_join_name(fun, expected):
 )
 def test_text_lit(expr, expected):
     assert text_lit(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("DA.Internal.LF", "getTime"), "getTime"),
+        (_val("DA.Internal.LF", "$$cgetTime"), "getTime"),
+        (_val("DA.Time", "isLedgerTimeLT"), None),
+        (_val("Main", "getTime"), None),
+        (lf.Expr(var="now"), None),
+    ],
+    ids=["class-method", "instance", "ledger-time-test", "user-value", "var"],
+)
+def test_clock_name(fun, expected):
+    assert clock_name(fun) == expected
