@@ -20,6 +20,7 @@ COPY_DAR = ROOT / "examples" / "vulnerable" / "nonconsuming-create" / "nonconsum
 FETCH_DAR = ROOT / "examples" / "vulnerable" / "unchecked-fetch" / "unchecked-fetch.dar"
 TIME_DAR = ROOT / "examples" / "vulnerable" / "time-from-argument" / "time-from-argument.dar"
 DIV_DAR = ROOT / "examples" / "vulnerable" / "divide-before-multiply" / "divide-before-multiply.dar"
+ABORT_DAR = ROOT / "examples" / "vulnerable" / "aborting-choice" / "aborting-choice.dar"
 INPUT_DAR = ROOT / "examples" / "vulnerable" / "unconsumed-input" / "unconsumed-input.dar"
 EPS_DAR = ROOT / "examples" / "vulnerable" / "amount-tolerance" / "amount-tolerance.dar"
 DROP_DAR = ROOT / "examples" / "vulnerable" / "discarded-update" / "discarded-update.dar"
@@ -101,3 +102,8 @@ def div_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def input_index() -> PackageIndex:
     return PackageIndex(Dar.load(INPUT_DAR))
+
+
+@pytest.fixture(scope="session")
+def abort_index() -> PackageIndex:
+    return PackageIndex(Dar.load(ABORT_DAR))

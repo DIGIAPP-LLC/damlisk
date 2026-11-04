@@ -1,0 +1,38 @@
+module Main where
+
+unsupported : Text -> Update a
+unsupported name = abort (name <> " is not supported")
+
+template Vault
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    ensure amount > 0.0
+
+    choice Withdraw : ()
+      controller owner
+      do error "TODO"
+
+    choice Close : ()
+      controller owner
+      do
+        unsupported "Close"
+        pure ()
+
+    choice Drain : ()
+      with
+        limit : Decimal
+      controller owner
+      do
+        if limit < amount
+          then abort "over limit"
+          else pure ()
+
+    choice Check : ()
+      with
+        expected : Decimal
+      controller owner
+      do
+        assertMsg "amount" (expected == amount)

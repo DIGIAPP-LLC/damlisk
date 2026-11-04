@@ -32,6 +32,7 @@ damlisk list-detectors
 | [`amount-tolerance`](#amount-tolerance) | Medium | High | `Decimal` amounts compared with `abs (a - b) < eps` instead of exactly |
 | [`divide-before-multiply`](#divide-before-multiply) | Medium | Medium | Result of a division multiplied, compounding its rounding error |
 | [`unconsumed-input`](#unconsumed-input) | High | Medium | Input contract of the same template read but not archived |
+| [`aborting-choice`](#aborting-choice) | Informational | High | Choice whose body always aborts |
 
 ### boolean-cst
 
@@ -814,3 +815,60 @@ an input used only as a reference (never added to the new contract) is still rep
 
 **Recommendation:** archive every input after reading it (`archive other`,
 `forA_ others archive`), or exercise a consuming choice on it.
+
+### aborting-choice
+
+**Aborting choice.** It reports a choice whose body always fails: it unconditionally reaches
+`error`, `abort`, `fail` or `throw`, directly or through a helper such as Splice's
+`deprecatedChoice`.
+
+**Impact:** the choice stays in the template's API and in generated client bindings, but
+every exercise is rejected. A stub left as `error "TODO"` means the action it promises
+(withdraw, cancel, expire) is impossible; a deprecated choice sends clients to a dead end
+unless it is documented.
+
+**Example** (`examples/vulnerable/aborting-choice/daml/Main.daml`):
+
+```haskell
+unsupported : Text -> Update a
+unsupported name = abort (name <> " is not supported")
+
+    choice Withdraw : ()
+      controller owner
+      do error "TODO"
+
+    choice Close : ()
+      controller owner
+      do
+        unsupported "Close"
+        pure ()
+```
+
+```
+$ damlisk scan examples/vulnerable/aborting-choice/aborting-choice.dar --detect aborting-choice
+[Informational] aborting-choice Main.daml:18
+    Main:Vault.Close: every exercise aborts
+[Informational] aborting-choice Main.daml:14
+    Main:Vault.Withdraw: every exercise aborts
+2 finding(s).
+```
+
+`Drain` (`if limit < amount then abort … else pure ()`) and `Check` (`assertMsg`) can succeed
+and are not reported.
+
+**How it works:** an expression always aborts if it is a `throw` or the `ERROR` builtin, a call
+of a value that always aborts (followed through every package, so `abort` → `fail` →
+`error` → `throw` is recognised), a `let` whose body aborts, a `case` whose every branch
+aborts, or a `do` block with a statement that aborts.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 9 findings, exactly its deprecated
+choices: `Amulet_Expire`, `LockedAmulet_Unlock`, `LockedAmulet_OwnerExpireLock`,
+`LockedAmulet_ExpireAmulet`, `AmuletRules_ComputeFees`, the three
+`AmuletRules_*FutureAmuletConfigSchedule` choices (`deprecatedChoice`) and
+`ValidatorLicense_ReceiveFaucetCoupon` (`error "… is deprecated …"`). 0.1.14 has 4. The
+conditional `error` / `abort` calls elsewhere in Splice are not reported. Note that
+`AmuletRules_ComputeFees` still declares `expectedDso`, documented as "must always be set",
+although the choice can no longer run.
+
+**Recommendation:** implement or remove the choice. If it is kept only for upgrade
+compatibility, mark it deprecated in its documentation and name the replacement choice.
