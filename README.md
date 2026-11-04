@@ -36,6 +36,7 @@ damlisk list-detectors
 | [`hash-concat-collision`](#hash-concat-collision) | Medium | Medium | `sha256` of texts joined without a separator |
 | [`time-equality`](#time-equality) | Medium | High | Ledger time compared with `==` or `/=` |
 | [`tautological-compare`](#tautological-compare) | Medium | High | Value compared with itself (`payer == payer`) |
+| [`unprotected-archive`](#unprotected-archive) | High | Medium | Consuming choice controlled by a non-signatory |
 
 ### boolean-cst
 
@@ -1037,3 +1038,61 @@ builtins, `Eq`/`Ord` methods and alias helpers. The derived `Eq` instances compa
 **Results on real code:** Splice is clean.
 
 **Recommendation:** compare with the intended value, or remove the check.
+
+### unprotected-archive
+
+**Archive by a non-signatory.** It reports a consuming choice whose controllers are contract
+parties none of which is a signatory (Slither `suicidal`).
+
+**Impact:** exercising a consuming choice archives the contract. When only an observer
+controls it, a party that never signed the contract can destroy it, and the signatories lose
+it without consent.
+
+**Example** (`examples/vulnerable/unprotected-archive/daml/Main.daml`):
+
+```haskell
+template Asset
+  with
+    issuer : Party
+    owner : Party
+    auditor : Party
+  where
+    signatory issuer
+    observer owner, auditor
+
+    choice Cancel : ()
+      controller auditor
+      do pure ()
+
+    choice Burn : ()
+      controller owner
+      do pure ()
+```
+
+```
+$ damlisk scan examples/vulnerable/unprotected-archive/unprotected-archive.dar --detect unprotected-archive
+[High] unprotected-archive Main.daml:16
+    Main:Asset.Burn: archived by non-signatory controller `owner`
+[High] unprotected-archive Main.daml:12
+    Main:Asset.Cancel: archived by non-signatory controller `auditor`
+2 finding(s).
+```
+
+`Revoke` (`controller issuer`), `Redeem` (`controller owner, issuer`) and the nonconsuming
+`Inspect` are not reported.
+
+**How it works:** the template fields read by `signatory` and by the choice's `controller`
+are traced with field flow. A consuming template choice is reported when its controller
+fields are not empty and share no field with the signatory fields. Controllers taken from the
+choice argument are left to [`controller-from-argument`](#controller-from-argument).
+
+**Results on real code:** `splice-amulet` 0.1.24 has 12 findings (0.1.14 has 10). They are
+proposal and delegation choices where an observer ends the contract by design, e.g.
+`ExternalPartySetupProposal_Accept` / `_Reject` (`user`), `DevelopmentFundCoupon_Withdraw`
+(`fundManager`), `FeaturedAppRight_Cancel` (`provider`), `TransferCommand_Send` (`delegate`)
+and five `ValidatorLicense_*` choices (`validator`). Review that ending the contract is the
+intent of each.
+
+**Recommendation:** make the choice `nonconsuming`, add a signatory as co-controller, or make
+the controller a signatory. Keep consuming observer choices only where ending the contract
+is their purpose (rejecting a proposal) and document it.

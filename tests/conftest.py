@@ -23,6 +23,7 @@ DIV_DAR = ROOT / "examples" / "vulnerable" / "divide-before-multiply" / "divide-
 HASH_DAR = ROOT / "examples" / "vulnerable" / "hash-concat-collision" / "hash-concat-collision.dar"
 CLOCK_DAR = ROOT / "examples" / "vulnerable" / "time-equality" / "time-equality.dar"
 SAME_DAR = ROOT / "examples" / "vulnerable" / "tautological-compare" / "tautological-compare.dar"
+ARCHIVE_DAR = ROOT / "examples" / "vulnerable" / "unprotected-archive" / "unprotected-archive.dar"
 ABORT_DAR = ROOT / "examples" / "vulnerable" / "aborting-choice" / "aborting-choice.dar"
 INPUT_DAR = ROOT / "examples" / "vulnerable" / "unconsumed-input" / "unconsumed-input.dar"
 EPS_DAR = ROOT / "examples" / "vulnerable" / "amount-tolerance" / "amount-tolerance.dar"
@@ -125,3 +126,8 @@ def clock_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def same_index() -> PackageIndex:
     return PackageIndex(Dar.load(SAME_DAR))
+
+
+@pytest.fixture(scope="session")
+def archive_index() -> PackageIndex:
+    return PackageIndex(Dar.load(ARCHIVE_DAR))

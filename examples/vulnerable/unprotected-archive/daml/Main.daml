@@ -1,0 +1,30 @@
+module Main where
+
+template Asset
+  with
+    issuer : Party
+    owner : Party
+    auditor : Party
+  where
+    signatory issuer
+    observer owner, auditor
+
+    choice Cancel : ()
+      controller auditor
+      do pure ()
+
+    choice Burn : ()
+      controller owner
+      do pure ()
+
+    choice Revoke : ()
+      controller issuer
+      do pure ()
+
+    choice Redeem : ()
+      controller owner, issuer
+      do pure ()
+
+    nonconsuming choice Inspect : Asset
+      controller auditor
+      do pure this
