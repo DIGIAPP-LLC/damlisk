@@ -1,0 +1,40 @@
+module Main where
+
+template Pool
+  with
+    admin : Party
+    total : Decimal
+    reward : Decimal
+  where
+    signatory admin
+
+    nonconsuming choice Payout : Decimal
+      with
+        stake : Decimal
+      controller admin
+      do
+        let share = stake / total
+        pure (reward * share)
+
+    nonconsuming choice Fee : Decimal
+      with
+        amount : Decimal
+        bps : Decimal
+      controller admin
+      do
+        pure (amount / 10000.0 * bps)
+
+    nonconsuming choice SafePayout : Decimal
+      with
+        stake : Decimal
+      controller admin
+      do
+        pure (reward * stake / total)
+
+    nonconsuming choice Scale : Decimal
+      with
+        factor : Decimal
+      controller admin
+      do
+        let doubled = reward * 2.0
+        pure (doubled / factor)

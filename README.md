@@ -30,6 +30,7 @@ damlisk list-detectors
 | [`unchecked-fetch`](#unchecked-fetch) | High | Medium | Contract fetched from a choice argument and used without validation |
 | [`time-from-argument`](#time-from-argument) | Medium | Medium | Deadline logic on a caller-supplied `Time` instead of ledger time |
 | [`amount-tolerance`](#amount-tolerance) | Medium | High | `Decimal` amounts compared with `abs (a - b) < eps` instead of exactly |
+| [`divide-before-multiply`](#divide-before-multiply) | Medium | Medium | Result of a division multiplied, compounding its rounding error |
 
 ### boolean-cst
 
@@ -709,3 +710,55 @@ applied helper (`$$sc_X_14 = (>=) 0.01`); both are followed.
 
 **Recommendation:** compare amounts exactly (`sum outputs == sum inputs`). When a division
 leaves a remainder, assign it explicitly, e.g. to the last output or back to the sender.
+
+### divide-before-multiply
+
+**Divide before multiply.** It reports a multiplication whose operand is the result of a
+division, written inline (`a / b * c`) or through a `let` (`let share = a / b in c * share`).
+
+**Impact:** `Decimal` division rounds to 10 decimal places (`Int` division truncates), and the
+multiplication then scales that rounding error. Payouts, fees and shares come out wrong;
+summed over many recipients they no longer add up to the total, which leaves dust behind or
+breaks a later conservation check.
+
+**Example** (`examples/vulnerable/divide-before-multiply/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice Payout : Decimal
+      with
+        stake : Decimal
+      controller admin
+      do
+        let share = stake / total
+        pure (reward * share)
+```
+
+```
+$ damlisk scan examples/vulnerable/divide-before-multiply/divide-before-multiply.dar --detect divide-before-multiply
+[Medium] divide-before-multiply Main.daml:19
+    Main:Pool.Fee.update: result of a division is multiplied
+[Medium] divide-before-multiply Main.daml:11
+    Main:Pool.Payout.update: result of a division is multiplied
+2 finding(s).
+```
+
+`Fee` (`amount / 10000.0 * bps`) is reported too. `SafePayout` (`reward * stake / total`) and
+`Scale` (multiplies, then divides) are not reported.
+
+**How it works:** multiplication and division are recognised as builtins (`MUL_NUMERIC`,
+`DIV_NUMERIC`, `MUL_INT64`, `DIV_INT64`) or `GHC.Num` methods (`$c*`, `$c/`), also through the
+`$$sc` aliases damlc generates. `let` variables bound to a division are tracked within the
+same body.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 5 findings, all intentional tokenomics
+arithmetic: `ratePerRoundToRatePerDay`, `computeIssuanceTranche`,
+`computeIssuingRoundParameters`, `computeSynchronizerFees` (`trafficAmount / 1e6 * price`) and
+`AmuletRules_ConvertFeaturedAppActivityMarkers` (`amountUsd / amuletPrice`, then `* weight`).
+Splice's own comments accept the rounding error (up to `0.5e-10` per unit). The other Splice
+packages are clean.
+
+**Why Medium confidence:** some divisions are exact (an `Int` converted to `Decimal` and divided
+by `1e6`), and some code accepts the error on purpose, as Splice does.
+
+**Recommendation:** multiply first and divide last (`reward * stake / total`), and assign any
+remainder explicitly.

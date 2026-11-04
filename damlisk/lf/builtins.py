@@ -13,6 +13,8 @@ ORDERS = {"LESS": "<", "LESS_EQ": "<=", "GREATER": ">", "GREATER_EQ": ">="}
 EQ_MODULE = "GHC.Classes"
 NUM_MODULE = "GHC.Num"
 ABS_RE = re.compile(r"^(?:\$c)?abs\d*$")
+ARITH_RE = re.compile(r"^(?:\$c)?(\*|/)\d*$")
+ARITH = {"MUL_INT64": "*", "MUL_NUMERIC": "*", "DIV_INT64": "/", "DIV_NUMERIC": "/"}
 TIME_READS = {
     ("DA.Internal.LF", "getTime"),
     ("DA.Internal.LF", "$cgetTime"),
@@ -159,6 +161,20 @@ def abs_name(fun: lf.Expr) -> str | None:
     if module == NUM_MODULE and ABS_RE.match(name):
         return "abs"
     return None
+
+
+def arith_name(fun: lf.Expr) -> str | None:
+    """Return `*` or `/` if `fun` multiplies or divides (builtin or `Num` method), or None."""
+    fun = untyped(fun)
+    if fun.builtin is not None:
+        return ARITH.get(lf_name(fun.builtin))
+    if fun.val is None:
+        return None
+    module, name = qual_name(fun.val)
+    if module != NUM_MODULE:
+        return None
+    match = ARITH_RE.match(name)
+    return match[1] if match else None
 
 
 def numeric_lit(expr: lf.Expr) -> str | None:

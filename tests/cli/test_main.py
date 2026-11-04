@@ -6,6 +6,8 @@ from click.testing import CliRunner
 from damlisk.cli.main import cli
 from tests.conftest import AMULET_DAR, BOOL_DAR, CTRL_DAR
 
+EXCLUDED = "missing-amount-check,unused-template-field,divide-before-multiply"
+
 
 @pytest.mark.parametrize(
     "args,code,expected",
@@ -19,12 +21,8 @@ from tests.conftest import AMULET_DAR, BOOL_DAR, CTRL_DAR
             "No findings.",
         ),
         (["scan", str(BOOL_DAR), "--detect", "nope"], 2, "unknown detector(s): nope"),
-        (["scan", str(AMULET_DAR)], 0, "13 finding(s)."),
-        (
-            ["scan", str(AMULET_DAR), "--exclude", "missing-amount-check,unused-template-field"],
-            0,
-            "No findings.",
-        ),
+        (["scan", str(AMULET_DAR)], 0, "18 finding(s)."),
+        (["scan", str(AMULET_DAR), "--exclude", EXCLUDED], 0, "No findings."),
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),
         (["list-detectors"], 0, "boolean-equal"),

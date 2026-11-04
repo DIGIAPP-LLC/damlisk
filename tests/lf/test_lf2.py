@@ -4,6 +4,7 @@ from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.builtins import (
     abs_name,
+    arith_name,
     bool_const,
     compare_name,
     demangle,
@@ -314,3 +315,20 @@ def test_abs_name(fun, expected):
 )
 def test_numeric_lit(expr, expected):
     assert numeric_lit(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (lf.Expr(builtin="MUL_NUMERIC"), "*"),
+        (lf.Expr(builtin="DIV_INT64"), "/"),
+        (_val("GHC.Num", "$$c*"), "*"),
+        (_val("GHC.Num", "$$c/"), "/"),
+        (_val("GHC.Num", "$$c+"), None),
+        (_val("Main", "$$c*"), None),
+        (lf.Expr(builtin="ADD_NUMERIC"), None),
+    ],
+    ids=["mul-builtin", "div-builtin", "mul-method", "div-method", "plus", "user-op", "add"],
+)
+def test_arith_name(fun, expected):
+    assert arith_name(fun) == expected

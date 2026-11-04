@@ -6,6 +6,7 @@ from damlisk.detectors.hygiene.boolean_equal import BooleanEqual
 from damlisk.detectors.hygiene.discarded_update import DiscardedUpdate
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
 from damlisk.detectors.validation.amount_tolerance import AmountTolerance
+from damlisk.detectors.validation.divide_multiply import DivideBeforeMultiply
 from damlisk.detectors.validation.missing_amount import MissingAmountCheck
 from damlisk.detectors.validation.nonconsuming_create import NonconsumingCreate
 from damlisk.detectors.validation.partial_function import PartialFunction
@@ -25,4 +26,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     UncheckedFetch,
     TimeFromArgument,
     AmountTolerance,
+    DivideBeforeMultiply,
 )
