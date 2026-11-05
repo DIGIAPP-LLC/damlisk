@@ -43,6 +43,7 @@ damlisk list-detectors
 | [`debug-trace`](#debug-trace) | Informational | High | Debug trace left in production code |
 | [`stuck-asset`](#stuck-asset) | Medium | Medium | Asset its owner cannot move: no owner-controlled consuming choice |
 | [`sdk-version`](#sdk-version) | Informational | High | DAR built for a Daml-LF 1.x target |
+| [`rtlo`](#rtlo) | High | High | Bidirectional control character (right-to-left override) in source or `Text` |
 
 ### boolean-cst
 
@@ -1415,3 +1416,56 @@ LF 1.x main package instead.
 findings.
 
 **Recommendation:** rebuild the package with a Daml 3.x SDK for a Daml-LF 2.x target.
+
+### rtlo
+
+**Right-to-left override.** It reports U+202E and the other Unicode bidirectional control
+characters (U+202A–U+202E, U+2066–U+2069) in the embedded `.daml` sources and in `Text`
+literals.
+
+**Impact:** these characters reorder the text around them when it is displayed. In a comment
+the source a reviewer reads differs from the code that runs; in a `Text` value a name or label
+shown to users differs from its content.
+
+**Example** (`examples/vulnerable/rtlo/daml/Main.daml`):
+
+```haskell
+    choice Transfer : ContractId Asset
+      with
+        to : Party
+      controller owner
+      do
+        -- only the owner may transfer <U+202E> } ;owner =/= ot ecnetsixe {
+        create this with owner = to
+
+    choice Rename : ContractId Asset
+      controller owner
+      do create this with label = "invoice\x202Etxt.exe"
+```
+
+The comment renders as `-- only the owner may transfer { existence to /= owner; }`, and the
+label renders as `invoiceexe.txt`.
+
+```
+$ damlisk scan examples/vulnerable/rtlo/rtlo.dar --detect rtlo
+[High] rtlo Main.daml:15
+    Main: bidirectional control character U+202E in source
+[High] rtlo Main.daml:18
+    Main:Asset.Rename.update: Text literal contains U+202E
+2 finding(s).
+```
+
+`Relabel` (`label = "invoice.pdf"`) is not reported.
+
+**How it works:** damlc rejects a raw bidirectional character inside a string literal
+(`lexical error in string/character literal`), but accepts it in comments, and accepts escapes
+such as `\x202E` in literals, which compile to the real character in the Daml-LF literal. The
+detector therefore scans every line of the sources embedded in the DAR, and every `Text`
+literal in the package. Right-to-left letters (Hebrew, Arabic) are not control characters and
+are not reported.
+
+**Results on real code:** no Splice source or literal contains a bidirectional control
+character.
+
+**Recommendation:** remove bidirectional control characters from sources and literals, and
+reject them in `Text` fields that are shown to users.

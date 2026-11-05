@@ -1,0 +1,24 @@
+module Main where
+
+template Asset
+  with
+    owner : Party
+    label : Text
+  where
+    signatory owner
+
+    choice Transfer : ContractId Asset
+      with
+        to : Party
+      controller owner
+      do
+        -- only the owner may transfer ‮ } ;owner =/= ot ecnetsixe {
+        create this with owner = to
+
+    choice Rename : ContractId Asset
+      controller owner
+      do create this with label = "invoice\x202Etxt.exe"
+
+    choice Relabel : ContractId Asset
+      controller owner
+      do create this with label = "invoice.pdf"

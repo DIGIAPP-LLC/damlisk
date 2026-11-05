@@ -28,6 +28,7 @@ DISCLOSE_DAR = ROOT / "examples" / "vulnerable" / "over-disclosure" / "over-disc
 UNSAFE_DAR = ROOT / "examples" / "vulnerable" / "unsafe-primitive" / "unsafe-primitive.dar"
 TRACE_DAR = ROOT / "examples" / "vulnerable" / "debug-trace" / "debug-trace.dar"
 STUCK_DAR = ROOT / "examples" / "vulnerable" / "stuck-asset" / "stuck-asset.dar"
+RTLO_DAR = ROOT / "examples" / "vulnerable" / "rtlo" / "rtlo.dar"
 ENSURE_DAR = ROOT / "examples" / "vulnerable" / "missing-ensure" / "missing-ensure.dar"
 ABORT_DAR = ROOT / "examples" / "vulnerable" / "aborting-choice" / "aborting-choice.dar"
 INPUT_DAR = ROOT / "examples" / "vulnerable" / "unconsumed-input" / "unconsumed-input.dar"
@@ -161,3 +162,8 @@ def trace_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def stuck_index() -> PackageIndex:
     return PackageIndex(Dar.load(STUCK_DAR))
+
+
+@pytest.fixture(scope="session")
+def rtlo_index() -> PackageIndex:
+    return PackageIndex(Dar.load(RTLO_DAR))
