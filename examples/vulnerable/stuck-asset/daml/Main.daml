@@ -1,0 +1,58 @@
+module Main where
+
+template Holding
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    choice Freeze : ContractId Holding
+      controller issuer
+      do create this
+
+template Badge
+  with
+    issuer : Party
+    holder : Party
+  where
+    signatory issuer
+    observer holder
+
+    nonconsuming choice Present : Party
+      controller holder
+      do pure issuer
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    choice Transfer : ContractId Token
+      with
+        newOwner : Party
+      controller owner
+      do create this with owner = newOwner
+
+template Voucher
+  with
+    issuer : Party
+    holder : Party
+  where
+    signatory issuer
+    observer holder
+
+    choice Redeem : ()
+      controller holder, issuer
+      do pure ()
+
+template Note
+  with
+    issuer : Party
+    text : Text
+  where
+    signatory issuer

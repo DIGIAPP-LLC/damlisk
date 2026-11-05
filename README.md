@@ -41,6 +41,7 @@ damlisk list-detectors
 | [`over-disclosure`](#over-disclosure) | Medium | Medium | Choice observers taken from the choice argument |
 | [`unsafe-primitive`](#unsafe-primitive) | High | High | Unchecked cast of a contract id, interface or `Any` value |
 | [`debug-trace`](#debug-trace) | Informational | High | Debug trace left in production code |
+| [`stuck-asset`](#stuck-asset) | Medium | Medium | Asset its owner cannot move: no owner-controlled consuming choice |
 
 ### boolean-cst
 
@@ -1325,3 +1326,64 @@ same way helpers of a choice are reported under the choice.
 0.1.24, which has none.
 
 **Recommendation:** remove debug output before release, or keep it in Daml Script tests.
+
+### stuck-asset
+
+**Asset its owner cannot move.** It reports a template with an `owner` or `holder` field when
+no consuming choice other than `Archive` is controlled by that field.
+
+**Impact:** the holder cannot transfer, split or redeem the asset alone. Other parties decide
+when, or whether, it moves.
+
+**Example** (`examples/vulnerable/stuck-asset/daml/Main.daml`):
+
+```haskell
+template Holding
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    choice Freeze : ContractId Holding
+      controller issuer
+      do create this
+
+template Badge
+  with
+    issuer : Party
+    holder : Party
+  where
+    signatory issuer
+    observer holder
+
+    nonconsuming choice Present : Party
+      controller holder
+      do pure issuer
+```
+
+```
+$ damlisk scan examples/vulnerable/stuck-asset/stuck-asset.dar --detect stuck-asset
+[Medium] stuck-asset Main.daml:15
+    Main:Badge: `holder` controls no consuming choice except Archive
+[Medium] stuck-asset Main.daml:3
+    Main:Holding: `owner` controls no consuming choice except Archive
+2 finding(s).
+```
+
+`Token` (`Transfer` controlled by `owner`), `Voucher` (`Redeem` controlled by `holder, issuer`)
+and `Note` (no `owner` or `holder` field) are not reported.
+
+**How it works:** for each template with a field named `owner` or `holder`, the detector
+traces the controllers of every consuming template choice except `Archive` and checks whether
+one of them is that field. Nonconsuming choices do not count, since they leave the asset where
+it is. Choices of implemented interfaces are not decoded and are not considered.
+
+**Results on real code:** `splice-amulet` (0.1.14 to 0.1.24) has 1 finding, `Amulet`. Its
+only consuming choices (`Amulet_Expire`, `Amulet_ExpireV2`) are controlled by `dso`; the owner
+moves amulets through `AmuletRules_Transfer` on the `AmuletRules` contract, which archives them.
+This is the rules-contract design the recommendation mentions, so review rather than fix.
+
+**Recommendation:** give the holder a consuming choice (`Transfer`, `Redeem`, `Split`) or
+document the contract, often a rules contract, through which the holder moves the asset.
