@@ -14,6 +14,7 @@ EXCLUDED = ",".join(
         "aborting-choice",
         "unprotected-archive",
         "missing-ensure",
+        "over-disclosure",
     ]
 )
 
@@ -30,7 +31,7 @@ EXCLUDED = ",".join(
             "No findings.",
         ),
         (["scan", str(BOOL_DAR), "--detect", "nope"], 2, "unknown detector(s): nope"),
-        (["scan", str(AMULET_DAR)], 0, "45 finding(s)."),
+        (["scan", str(AMULET_DAR)], 0, "52 finding(s)."),
         (["scan", str(AMULET_DAR), "--exclude", EXCLUDED], 0, "No findings."),
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),

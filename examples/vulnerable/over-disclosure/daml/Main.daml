@@ -1,0 +1,38 @@
+module Main where
+
+template Trade
+  with
+    owner : Party
+    auditor : Party
+    amount : Decimal
+  where
+    signatory owner
+    observer auditor
+
+    choice Settle : ()
+      with
+        watchers : [Party]
+      observer watchers
+      controller owner
+      do pure ()
+
+    choice Report : ()
+      with
+        reader : Party
+        note : Text
+      observer [reader, auditor]
+      controller owner
+      do pure ()
+
+    choice Audit : ()
+      with
+        note : Text
+      observer auditor
+      controller owner
+      do pure ()
+
+    nonconsuming choice Peek : Decimal
+      with
+        viewer : Party
+      controller viewer
+      do pure amount

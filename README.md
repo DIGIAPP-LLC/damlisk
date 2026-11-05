@@ -38,6 +38,7 @@ damlisk list-detectors
 | [`tautological-compare`](#tautological-compare) | Medium | High | Value compared with itself (`payer == payer`) |
 | [`unprotected-archive`](#unprotected-archive) | High | Medium | Consuming choice controlled by a non-signatory |
 | [`missing-ensure`](#missing-ensure) | Medium | High | Template with amount or time fields and no or trivial `ensure` |
+| [`over-disclosure`](#over-disclosure) | Medium | Medium | Choice observers taken from the choice argument |
 
 ### boolean-cst
 
@@ -1153,3 +1154,58 @@ scan finds without `ensure`: `CalculateRewardsV2`, `ProcessRewardsV2`,
 
 **Recommendation:** add an `ensure` that states the invariants, e.g. `ensure amount > 0.0`,
 `ensure nonce >= 0`, `ensure createdAt <= expiresAt`.
+
+### over-disclosure
+
+**Choice observers taken from the choice argument.** It reports a choice whose `observer`
+clause uses fields of the choice argument.
+
+**Impact:** choice observers see the exercise and everything it creates, fetches or
+exercises. When the controller picks them, the controller can divulge the contract and its
+consequences to any party.
+
+**Example** (`examples/vulnerable/over-disclosure/daml/Main.daml`):
+
+```haskell
+    choice Settle : ()
+      with
+        watchers : [Party]
+      observer watchers
+      controller owner
+      do pure ()
+
+    choice Report : ()
+      with
+        reader : Party
+        note : Text
+      observer [reader, auditor]
+      controller owner
+      do pure ()
+```
+
+```
+$ damlisk scan examples/vulnerable/over-disclosure/over-disclosure.dar --detect over-disclosure
+[Medium] over-disclosure Main.daml:19
+    Main:Trade.Report: choice observers taken from argument `reader`
+[Medium] over-disclosure Main.daml:12
+    Main:Trade.Settle: choice observers taken from argument `watchers`
+2 finding(s).
+```
+
+`Audit` (`observer auditor`, a contract field) and `Peek` (no choice observers) are not
+reported.
+
+**How it works:** the detector traces the choice argument through the `observers` expression
+of each choice, following package helpers. Only named argument fields count: an observer
+computed by an interface method from the whole argument (`observer
+allocation_settleExtraObservers this arg`) is chosen by the implementation and is not
+reported. Template observers set when a choice creates a contract need data flow across
+`create` (T2) and are not covered.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 7 findings, all DSO-controlled choices
+that take observers from the argument (`expiryObservers`, `providers`, `observers`,
+`batch`); 0.1.14 has none. `splice-api-featured-app-v2` (`beneficiaries`) and
+`splice-api-reward-assignment-v1` (`newBeneficiaries`) have 1 each.
+
+**Recommendation:** take choice observers from contract fields that the signatories agreed
+to, or check the argument parties against an allowed list before they are used as observers.
