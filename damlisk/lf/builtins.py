@@ -33,6 +33,13 @@ UNSAFE_VALS = {
     ("DA.Internal.LF", "coerceContractId"),
     ("DA.Internal.Interface", "unsafeFromInterface"),
 }
+TRACES = {
+    ("DA.Internal.Prelude", "traceRaw"),
+    ("DA.Internal.Prelude", "trace"),
+    ("DA.Internal.Prelude", "traceId"),
+    ("DA.Internal.Prelude", "debugRaw"),
+    ("DA.Internal.Prelude", "debug"),
+}
 CLOCKS = {("DA.Internal.LF", "getTime"), ("DA.Internal.LF", "$cgetTime")}
 MEMBERSHIP = {("DA.Internal.Prelude", "elem"), ("DA.Internal.Prelude", "notElem")}
 PARTIAL = {
@@ -301,4 +308,14 @@ def unsafe_name(expr: lf.Expr) -> str | None:
         return "unsafeFromInterface"
     if expr.from_any is not None:
         return "fromAny"
+    return None
+
+
+def trace_name(expr: lf.Expr) -> str | None:
+    """Return the debug output `expr` writes with (`TRACE`, `trace`, `debug`, ...), or None."""
+    if expr.builtin is not None and lf_name(expr.builtin) == "TRACE":
+        return "TRACE"
+    if expr.val is not None and qual_name(expr.val) in TRACES:
+        module, name = qual_name(expr.val)
+        return name
     return None

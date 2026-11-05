@@ -146,6 +146,18 @@ class Scope:
             loc = known(ch.location) or self.locate(decl_re("choice", ch.name), first) or head
             yield ChoiceDecl(f"{owner}.{ch.name}", ch, decl.param, is_iface, loc)
 
+    def own_body(self, dv: lf.DefValue) -> Body:
+        """Return value `dv` as a body under its own name and source line."""
+        name = dv.name_with_type.name
+        loc = known(dv.location) or self.locate(value_re(name[-1]))
+        return Body(self.qual(*name), dv.expr, loc)
+
+    def named(self) -> Iterator[Body]:
+        """Yield the values the author named, without the `$` helpers damlc generates."""
+        for dv in self.module.values:
+            if not dv.name_with_type.name[-1].startswith("$"):
+                yield self.own_body(dv)
+
     def values(self, alias: dict[lf.ValName, Body]) -> Iterator[Body]:
         for dv in self.module.values:
             name = dv.name_with_type.name
@@ -153,8 +165,7 @@ class Scope:
             if parent is not None:
                 yield Body(parent.owner, dv.expr, parent.loc)
             else:
-                loc = known(dv.location) or self.locate(value_re(name[-1]))
-                yield Body(self.qual(*name), dv.expr, loc)
+                yield self.own_body(dv)
 
 
 class PackageIndex:
@@ -268,9 +279,12 @@ class PackageIndex:
         """
         pkg = pkg or self.dar.main
         decls = self.decls(pkg)
-        alias = aliases(decls, pkg, self.values)
+        roots = list(decls)
+        scopes = list(self.scopes(pkg))
+        for scope in scopes:
+            roots.extend(scope.named())
+        alias = aliases(roots, pkg, self.values)
         yield from decls
-        scopes = self.scopes(pkg)
         for scope in scopes:
             yield from scope.values(alias)
 

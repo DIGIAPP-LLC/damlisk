@@ -40,6 +40,7 @@ damlisk list-detectors
 | [`missing-ensure`](#missing-ensure) | Medium | High | Template with amount or time fields and no or trivial `ensure` |
 | [`over-disclosure`](#over-disclosure) | Medium | Medium | Choice observers taken from the choice argument |
 | [`unsafe-primitive`](#unsafe-primitive) | High | High | Unchecked cast of a contract id, interface or `Any` value |
+| [`debug-trace`](#debug-trace) | Informational | High | Debug trace left in production code |
 
 ### boolean-cst
 
@@ -1271,3 +1272,56 @@ has the same 3. `splice-token-standard-utils` has 8, one per `coerceContractId` 
 **Recommendation:** use the checked forms: `fromInterface` with a `case` on the result,
 `fetchFromInterface` or `fromAnyTemplate`, and fetch the contract to confirm its template
 before using it.
+
+### debug-trace
+
+**Debug trace left in production code.** It reports each `trace`, `traceRaw`, `traceId`,
+`debug` and `debugRaw` call, and the `TRACE` builtin they compile to.
+
+**Impact:** the message is written to the log of every participant that runs the code.
+Operators and log pipelines then read amounts, parties and other data the ledger keeps
+private.
+
+**Example** (`examples/vulnerable/debug-trace/daml/Main.daml`):
+
+```haskell
+    choice Withdraw : ContractId Account
+      with
+        amount : Decimal
+      controller owner
+      do
+        debug ("withdraw " <> show amount)
+        create this with balance = balance - amount
+
+fee : Decimal -> Decimal
+fee amount = traceRaw "fee" (amount * 0.01)
+```
+
+```
+$ damlisk scan examples/vulnerable/debug-trace/debug-trace.dar --detect debug-trace
+[Informational] debug-trace Main.daml:26
+    Main:Account.Close.update: debug output `debugRaw`
+[Informational] debug-trace Main.daml:18
+    Main:Account.Deposit.update: debug output `trace`
+[Informational] debug-trace Main.daml:32
+    Main:Account.Report.update: debug output `traceId`
+[Informational] debug-trace Main.daml:10
+    Main:Account.Withdraw.update: debug output `debug`
+[Informational] debug-trace Main.daml:41
+    Main:fee: debug output `traceRaw`
+5 finding(s).
+```
+
+`Peek` (no trace) is not reported.
+
+**How it works:** the detector looks at every expression for the `TRACE` builtin and the five
+`DA.Internal.Prelude` functions built on it. damlc moves code of a top-level function into
+`$$sc_...` helpers; these are reported under the function that calls them (`Main:fee`), the
+same way helpers of a choice are reported under the choice.
+
+**Results on real code:** `splice-amulet` 0.1.14 and 0.1.19 have 3 findings each, the three
+`trace` calls in `summarizeTransfer` (`AmuletRules.daml:1014`,
+`trace summary $ trace preprocessedOutputs $ trace inp $ pure summary`). They are gone in
+0.1.24, which has none.
+
+**Recommendation:** remove debug output before release, or keep it in Daml Script tests.

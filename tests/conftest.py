@@ -26,6 +26,7 @@ SAME_DAR = ROOT / "examples" / "vulnerable" / "tautological-compare" / "tautolog
 ARCHIVE_DAR = ROOT / "examples" / "vulnerable" / "unprotected-archive" / "unprotected-archive.dar"
 DISCLOSE_DAR = ROOT / "examples" / "vulnerable" / "over-disclosure" / "over-disclosure.dar"
 UNSAFE_DAR = ROOT / "examples" / "vulnerable" / "unsafe-primitive" / "unsafe-primitive.dar"
+TRACE_DAR = ROOT / "examples" / "vulnerable" / "debug-trace" / "debug-trace.dar"
 ENSURE_DAR = ROOT / "examples" / "vulnerable" / "missing-ensure" / "missing-ensure.dar"
 ABORT_DAR = ROOT / "examples" / "vulnerable" / "aborting-choice" / "aborting-choice.dar"
 INPUT_DAR = ROOT / "examples" / "vulnerable" / "unconsumed-input" / "unconsumed-input.dar"
@@ -149,3 +150,8 @@ def disclose_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def unsafe_index() -> PackageIndex:
     return PackageIndex(Dar.load(UNSAFE_DAR))
+
+
+@pytest.fixture(scope="session")
+def trace_index() -> PackageIndex:
+    return PackageIndex(Dar.load(TRACE_DAR))

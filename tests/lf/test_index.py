@@ -19,6 +19,22 @@ def test_amulet_choice_values_are_attributed_to_choices(amulet_index):
     assert not any("$$$$sc_" in owner for owner in owners if ".update" in owner)
 
 
+@pytest.mark.parametrize(
+    "owner,attributed",
+    [
+        ("Main:fee", True),
+        ("Main:Account.Deposit.update", True),
+        ("Main:$$$$sc_fee_2", False),
+        ("Main:$$$$sc_fee_1", False),
+    ],
+    ids=["named-value", "choice", "trace-helper", "math-helper"],
+)
+def test_helpers_are_attributed_to_named_values(trace_index, owner, attributed):
+    owners = {b.owner for b in trace_index.bodies()}
+
+    assert (owner in owners) is attributed
+
+
 def test_index_resolves_values_referenced_by_choices(amulet_index):
     body = next(b for b in amulet_index.bodies() if b.owner.endswith("AmuletRules_Transfer.update"))
     names = [ref.node for ref in find_all(body.expr, lf.ValName)]

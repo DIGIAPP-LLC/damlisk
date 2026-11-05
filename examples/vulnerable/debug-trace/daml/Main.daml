@@ -1,0 +1,41 @@
+module Main where
+
+template Account
+  with
+    owner : Party
+    balance : Decimal
+  where
+    signatory owner
+
+    choice Withdraw : ContractId Account
+      with
+        amount : Decimal
+      controller owner
+      do
+        debug ("withdraw " <> show amount)
+        create this with balance = balance - amount
+
+    choice Deposit : ContractId Account
+      with
+        amount : Decimal
+      controller owner
+      do
+        let total = trace ("balance " <> show balance) (balance + amount)
+        create this with balance = total
+
+    choice Close : ()
+      controller owner
+      do
+        debugRaw "closing"
+        pure ()
+
+    nonconsuming choice Report : Decimal
+      controller owner
+      do pure (traceId balance)
+
+    nonconsuming choice Peek : Decimal
+      controller owner
+      do pure balance
+
+fee : Decimal -> Decimal
+fee amount = traceRaw "fee" (amount * 0.01)

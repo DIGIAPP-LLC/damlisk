@@ -23,6 +23,7 @@ from damlisk.lf.builtins import (
     partial_name,
     reads_time,
     text_lit,
+    trace_name,
     unsafe_name,
     untyped,
 )
@@ -472,3 +473,18 @@ def test_is_int(typ, expected):
 )
 def test_unsafe_name(expr, expected):
     assert unsafe_name(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (lf.Expr(builtin="TRACE"), "TRACE"),
+        (_val("DA.Internal.Prelude", "trace"), "trace"),
+        (_val("DA.Internal.Prelude", "debugRaw"), "debugRaw"),
+        (_val("Main", "trace"), None),
+        (lf.Expr(builtin="APPEND_TEXT"), None),
+    ],
+    ids=["builtin", "trace", "debug-raw", "user-value", "other-builtin"],
+)
+def test_trace_name(expr, expected):
+    assert trace_name(expr) == expected

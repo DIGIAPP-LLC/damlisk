@@ -7,6 +7,7 @@ from damlisk.detectors.contracts.unsafe_primitive import UnsafePrimitive
 from damlisk.detectors.hygiene.aborting_choice import AbortingChoice
 from damlisk.detectors.hygiene.boolean_cst import BooleanConstant
 from damlisk.detectors.hygiene.boolean_equal import BooleanEqual
+from damlisk.detectors.hygiene.debug_trace import DebugTrace
 from damlisk.detectors.hygiene.discarded_update import DiscardedUpdate
 from damlisk.detectors.hygiene.tautological_compare import TautologicalCompare
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
@@ -45,4 +46,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     MissingEnsure,
     OverDisclosure,
     UnsafePrimitive,
+    DebugTrace,
 )
