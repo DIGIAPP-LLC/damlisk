@@ -12,6 +12,7 @@ ORDER_RE = re.compile(r"^(?:\$c|\$dm)?(<|<=|>|>=)\d*$")
 ORDERS = {"LESS": "<", "LESS_EQ": "<=", "GREATER": ">", "GREATER_EQ": ">="}
 EQ_MODULE = "GHC.Classes"
 NUM_MODULE = "GHC.Num"
+UNSAFE_RE = re.compile(r"^\$cunsafeFromInterface\d*$")
 ABS_RE = re.compile(r"^(?:\$c)?abs\d*$")
 ARITH_RE = re.compile(r"^(?:\$c)?(\*|/)\d*$")
 ARITH = {"MUL_INT64": "*", "MUL_NUMERIC": "*", "DIV_INT64": "/", "DIV_NUMERIC": "/"}
@@ -27,6 +28,10 @@ TIME_READS = {
     ("DA.Time", "isLedgerTimeGE"),
     ("DA.Assert", "assertWithinDeadline"),
     ("DA.Assert", "assertDeadlineExceeded"),
+}
+UNSAFE_VALS = {
+    ("DA.Internal.LF", "coerceContractId"),
+    ("DA.Internal.Interface", "unsafeFromInterface"),
 }
 CLOCKS = {("DA.Internal.LF", "getTime"), ("DA.Internal.LF", "$cgetTime")}
 MEMBERSHIP = {("DA.Internal.Prelude", "elem"), ("DA.Internal.Prelude", "notElem")}
@@ -279,4 +284,21 @@ def clock_name(fun: lf.Expr) -> str | None:
     fun = untyped(fun)
     if fun.val is not None and qual_name(fun.val) in CLOCKS:
         return "getTime"
+    return None
+
+
+def unsafe_name(expr: lf.Expr) -> str | None:
+    """Return the unsafe cast `expr` is (`coerceContractId`, `unsafeFromInterface`, `fromAny`)."""
+    if expr.builtin is not None and lf_name(expr.builtin) == "COERCE_CONTRACT_ID":
+        return "coerceContractId"
+    if expr.val is not None:
+        module, name = qual_name(expr.val)
+        if (module, name) in UNSAFE_VALS:
+            return name
+        if UNSAFE_RE.match(name):
+            return "unsafeFromInterface"
+    if expr.unsafe_from_interface is not None:
+        return "unsafeFromInterface"
+    if expr.from_any is not None:
+        return "fromAny"
     return None

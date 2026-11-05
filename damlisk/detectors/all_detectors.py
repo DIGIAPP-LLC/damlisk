@@ -3,6 +3,7 @@ from damlisk.detectors.authorization.controller_arg import ControllerFromArgumen
 from damlisk.detectors.authorization.hardcoded_party import HardcodedParty
 from damlisk.detectors.authorization.over_disclosure import OverDisclosure
 from damlisk.detectors.authorization.unprotected_archive import UnprotectedArchive
+from damlisk.detectors.contracts.unsafe_primitive import UnsafePrimitive
 from damlisk.detectors.hygiene.aborting_choice import AbortingChoice
 from damlisk.detectors.hygiene.boolean_cst import BooleanConstant
 from damlisk.detectors.hygiene.boolean_equal import BooleanEqual
@@ -43,4 +44,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     UnprotectedArchive,
     MissingEnsure,
     OverDisclosure,
+    UnsafePrimitive,
 )

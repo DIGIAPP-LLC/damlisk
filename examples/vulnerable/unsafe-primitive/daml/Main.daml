@@ -1,0 +1,60 @@
+module Main where
+
+data AssetView = AssetView with owner : Party
+
+interface Asset where
+  viewtype AssetView
+
+template Holding
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    interface instance Asset for Holding where
+      view = AssetView with owner
+
+template Vault
+  with
+    keeper : Party
+  where
+    signatory keeper
+
+    nonconsuming choice Peek : Decimal
+      with
+        cid : ContractId Vault
+      controller keeper
+      do
+        holding <- fetch (coerceContractId cid : ContractId Holding)
+        pure holding.amount
+
+    nonconsuming choice Unwrap : Decimal
+      with
+        cid : ContractId Asset
+      controller keeper
+      do
+        asset <- fetch cid
+        let holding = unsafeFromInterface cid asset : Holding
+        pure holding.amount
+
+    nonconsuming choice Check : Optional Decimal
+      with
+        cid : ContractId Asset
+      controller keeper
+      do
+        asset <- fetch cid
+        pure (fmap (.amount) (fromInterface asset : Optional Holding))
+
+    nonconsuming choice Upcast : ContractId Asset
+      with
+        cid : ContractId Holding
+      controller keeper
+      do pure (toInterfaceContractId cid)
+
+    nonconsuming choice Downcast : Decimal
+      with
+        cid : ContractId Asset
+      controller keeper
+      do
+        holding <- fetch (fromInterfaceContractId @Holding cid)
+        pure holding.amount

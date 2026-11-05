@@ -23,6 +23,7 @@ from damlisk.lf.builtins import (
     partial_name,
     reads_time,
     text_lit,
+    unsafe_name,
     untyped,
 )
 from damlisk.lf.lf2 import Parser23
@@ -441,3 +442,33 @@ def test_clock_name(fun, expected):
 )
 def test_is_int(typ, expected):
     assert is_int(typ) is expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (lf.Expr(builtin="COERCE_CONTRACT_ID"), "coerceContractId"),
+        (_val("DA.Internal.LF", "coerceContractId"), "coerceContractId"),
+        (_val("DA.Internal.Interface", "unsafeFromInterface"), "unsafeFromInterface"),
+        (_val("Main", "$$cunsafeFromInterface1"), "unsafeFromInterface"),
+        (
+            lf.Expr(unsafe_from_interface=lf.Expr.UnsafeFromInterface(None, None, None, None)),
+            "unsafeFromInterface",
+        ),
+        (lf.Expr(from_any=lf.Expr.FromAny(None, None)), "fromAny"),
+        (_val("DA.Internal.Interface", "toInterfaceContractId"), None),
+        (lf.Expr(builtin="EQUAL"), None),
+    ],
+    ids=[
+        "coerce-builtin",
+        "coerce-value",
+        "unsafe-value",
+        "unsafe-instance-method",
+        "unsafe-node",
+        "from-any-node",
+        "upcast",
+        "other-builtin",
+    ],
+)
+def test_unsafe_name(expr, expected):
+    assert unsafe_name(expr) == expected

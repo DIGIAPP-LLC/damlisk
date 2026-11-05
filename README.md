@@ -39,6 +39,7 @@ damlisk list-detectors
 | [`unprotected-archive`](#unprotected-archive) | High | Medium | Consuming choice controlled by a non-signatory |
 | [`missing-ensure`](#missing-ensure) | Medium | High | Template with amount or time fields and no or trivial `ensure` |
 | [`over-disclosure`](#over-disclosure) | Medium | Medium | Choice observers taken from the choice argument |
+| [`unsafe-primitive`](#unsafe-primitive) | High | High | Unchecked cast of a contract id, interface or `Any` value |
 
 ### boolean-cst
 
@@ -1209,3 +1210,64 @@ that take observers from the argument (`expiryObservers`, `providers`, `observer
 
 **Recommendation:** take choice observers from contract fields that the signatories agreed
 to, or check the argument parties against an allowed list before they are used as observers.
+
+### unsafe-primitive
+
+**Unchecked cast.** It reports `coerceContractId` (`COERCE_CONTRACT_ID`),
+`unsafeFromInterface` (`unsafe_from_interface`) and `from_any` in code the package author
+wrote.
+
+**Impact:** these change the static type of a contract id or value without a check. The
+code then trusts a template type that the ledger never confirmed, e.g. it exercises a choice
+of one template on a contract id the caller supplied for another.
+
+**Example** (`examples/vulnerable/unsafe-primitive/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice Peek : Decimal
+      with
+        cid : ContractId Vault
+      controller keeper
+      do
+        holding <- fetch (coerceContractId cid : ContractId Holding)
+        pure holding.amount
+
+    nonconsuming choice Unwrap : Decimal
+      with
+        cid : ContractId Asset
+      controller keeper
+      do
+        asset <- fetch cid
+        let holding = unsafeFromInterface cid asset : Holding
+        pure holding.amount
+```
+
+```
+$ damlisk scan examples/vulnerable/unsafe-primitive/unsafe-primitive.dar --detect unsafe-primitive
+[High] unsafe-primitive Main.daml:23
+    Main:Vault.Peek.update: unsafe primitive `coerceContractId`
+[High] unsafe-primitive Main.daml:31
+    Main:Vault.Unwrap.update: unsafe primitive `unsafeFromInterface`
+2 finding(s).
+```
+
+`Check` (`fromInterface` with an `Optional` result), `Upcast` (`toInterfaceContractId`) and
+`Downcast` (`fetch (fromInterfaceContractId @Holding cid)`) are not reported.
+
+**How it works:** the detector looks at every expression for the `COERCE_CONTRACT_ID`
+builtin, the stdlib values `coerceContractId` and `unsafeFromInterface`, the instance method
+`$cunsafeFromInterfaceN` that damlc calls for `unsafeFromInterface` on a template, and the
+`unsafe_from_interface` and `from_any` nodes. It does not follow stdlib wrappers, because
+the safe upcast `toInterfaceContractId` is itself built on `coerceContractId`. The
+`HasFromAny*` and `HasFromInterface*` instances that damlc generates for every template are
+skipped, and so are instance dictionaries: a `fetch` after `fromInterfaceContractId` pulls in
+the `HasFromInterface` dictionary, which only lists `$cunsafeFromInterfaceN` as a method.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 3 findings, the 3 `coerceContractId`
+calls in the source (`TokenApiUtils.daml:283`, `:327`, `TwoStepTransfer.daml:61`); 0.1.14
+has the same 3. `splice-token-standard-utils` has 8, one per `coerceContractId` call in
+`Allocations.daml` and `Conversions.daml`.
+
+**Recommendation:** use the checked forms: `fromInterface` with a `case` on the result,
+`fetchFromInterface` or `fromAnyTemplate`, and fetch the contract to confirm its template
+before using it.
