@@ -12,6 +12,7 @@ from damlisk.detectors.validation.amount_tolerance import AmountTolerance
 from damlisk.detectors.validation.divide_multiply import DivideBeforeMultiply
 from damlisk.detectors.validation.hash_concat import HashConcatCollision
 from damlisk.detectors.validation.missing_amount import MissingAmountCheck
+from damlisk.detectors.validation.missing_ensure import MissingEnsure
 from damlisk.detectors.validation.nonconsuming_create import NonconsumingCreate
 from damlisk.detectors.validation.partial_function import PartialFunction
 from damlisk.detectors.validation.time_argument import TimeFromArgument
@@ -39,4 +40,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     TimeEquality,
     TautologicalCompare,
     UnprotectedArchive,
+    MissingEnsure,
 )

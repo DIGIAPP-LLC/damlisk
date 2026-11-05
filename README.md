@@ -37,6 +37,7 @@ damlisk list-detectors
 | [`time-equality`](#time-equality) | Medium | High | Ledger time compared with `==` or `/=` |
 | [`tautological-compare`](#tautological-compare) | Medium | High | Value compared with itself (`payer == payer`) |
 | [`unprotected-archive`](#unprotected-archive) | High | Medium | Consuming choice controlled by a non-signatory |
+| [`missing-ensure`](#missing-ensure) | Medium | High | Template with amount or time fields and no or trivial `ensure` |
 
 ### boolean-cst
 
@@ -1096,3 +1097,59 @@ intent of each.
 **Recommendation:** make the choice `nonconsuming`, add a signatory as co-controller, or make
 the controller a signatory. Keep consuming observer choices only where ending the contract
 is their purpose (rejecting a proposal) and document it.
+
+### missing-ensure
+
+**Missing template invariant.** It reports a template that has `Numeric`, `Int` or `Time`
+fields but no `ensure` clause, or only `ensure True`.
+
+**Impact:** without an invariant the ledger accepts contracts with any value in those fields:
+negative amounts, zero or negative counters, inverted time windows. Every choice that adds,
+compares or schedules with them inherits the bad value.
+
+**Example** (`examples/vulnerable/missing-ensure/daml/Main.daml`):
+
+```haskell
+template Holding
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+
+template Lock
+  with
+    owner : Party
+    unlockAt : Time
+  where
+    signatory owner
+    ensure True
+```
+
+```
+$ damlisk scan examples/vulnerable/missing-ensure/missing-ensure.dar --detect missing-ensure
+[Medium] missing-ensure Main.daml:18
+    Main:Counter: no ensure constrains `count`
+[Medium] missing-ensure Main.daml:3
+    Main:Holding: no ensure constrains `amount`
+[Medium] missing-ensure Main.daml:10
+    Main:Lock: no ensure constrains `unlockAt`
+3 finding(s).
+```
+
+`SafeHolding` (`ensure amount > 0.0`) and `Note` (only `Party` and `Text` fields) are not
+reported.
+
+**How it works:** damlc compiles both a missing `ensure` and `ensure True` to
+`$censure = \this -> True`; the detector follows the `ensure` helper and checks for that
+constant. Only direct template fields of type `Numeric`, `Int` or `Time` count. Unlike
+[`missing-amount-check`](#missing-amount-check), which reports each `Numeric` field the
+`ensure` never mentions, this reports templates that have no invariant at all.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 6 findings, the same 6 templates a source
+scan finds without `ensure`: `CalculateRewardsV2`, `ProcessRewardsV2`,
+`ExternalPartySetupProposal`, `TransferCommand` (`amount`, `expiresAt`, `nonce`),
+`TransferCommandCounter` (`nextNonce`) and `ExternalPartyConfigState`. 0.1.14 has 3.
+
+**Recommendation:** add an `ensure` that states the invariants, e.g. `ensure amount > 0.0`,
+`ensure nonce >= 0`, `ensure createdAt <= expiresAt`.

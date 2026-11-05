@@ -13,6 +13,7 @@ EXCLUDED = ",".join(
         "divide-before-multiply",
         "aborting-choice",
         "unprotected-archive",
+        "missing-ensure",
     ]
 )
 
@@ -20,16 +21,16 @@ EXCLUDED = ",".join(
 @pytest.mark.parametrize(
     "args,code,expected",
     [
-        (["scan", str(BOOL_DAR)], 0, "5 finding(s)."),
+        (["scan", str(BOOL_DAR)], 0, "6 finding(s)."),
         (["scan", str(BOOL_DAR), "--fail-on", "medium"], 1, "boolean-cst Main.daml:10"),
         (["scan", str(BOOL_DAR), "--fail-on", "high"], 0, "condition is always True"),
         (
-            ["scan", str(BOOL_DAR), "--exclude", "boolean-cst,missing-amount-check"],
+            ["scan", str(BOOL_DAR), "--exclude", "boolean-cst,missing-amount-check,missing-ensure"],
             0,
             "No findings.",
         ),
         (["scan", str(BOOL_DAR), "--detect", "nope"], 2, "unknown detector(s): nope"),
-        (["scan", str(AMULET_DAR)], 0, "39 finding(s)."),
+        (["scan", str(AMULET_DAR)], 0, "45 finding(s)."),
         (["scan", str(AMULET_DAR), "--exclude", EXCLUDED], 0, "No findings."),
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),

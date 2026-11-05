@@ -61,6 +61,11 @@ def is_numeric(typ: lf.Type) -> bool:
     return typ.prim is not None and typ.prim.prim == lf.PrimType.NUMERIC
 
 
+def is_int(typ: lf.Type) -> bool:
+    """Return True if `typ` is `Int` (Int64)."""
+    return typ.prim is not None and typ.prim.prim == lf.PrimType.INT64
+
+
 def type_args(typ: lf.Type) -> list[lf.Type]:
     """Return the types nested directly inside `typ` (type arguments, fields, bodies)."""
     if typ.prim is not None:

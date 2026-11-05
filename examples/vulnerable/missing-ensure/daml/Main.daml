@@ -1,0 +1,38 @@
+module Main where
+
+template Holding
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+
+template Lock
+  with
+    owner : Party
+    unlockAt : Time
+  where
+    signatory owner
+    ensure True
+
+template Counter
+  with
+    owner : Party
+    count : Int
+  where
+    signatory owner
+
+template SafeHolding
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    ensure amount > 0.0
+
+template Note
+  with
+    owner : Party
+    text : Text
+  where
+    signatory owner

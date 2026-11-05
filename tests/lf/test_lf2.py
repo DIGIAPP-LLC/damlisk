@@ -12,6 +12,7 @@ from damlisk.lf.builtins import (
     demangle,
     hash_name,
     is_compare,
+    is_int,
     is_numeric,
     is_time,
     join_name,
@@ -427,3 +428,16 @@ def test_text_lit(expr, expected):
 )
 def test_clock_name(fun, expected):
     assert clock_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (lf.Type(prim=lf.Type.Prim(lf.PrimType.INT64, ())), True),
+        (lf.Type(prim=lf.Type.Prim(lf.PrimType.NUMERIC, ())), False),
+        (lf.Type(var=lf.Type.Var("a", ())), False),
+    ],
+    ids=["int", "numeric", "type-var"],
+)
+def test_is_int(typ, expected):
+    assert is_int(typ) is expected
