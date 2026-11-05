@@ -12,6 +12,7 @@ from damlisk.detectors.hygiene.debug_trace import DebugTrace
 from damlisk.detectors.hygiene.discarded_update import DiscardedUpdate
 from damlisk.detectors.hygiene.tautological_compare import TautologicalCompare
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
+from damlisk.detectors.upgrade.sdk_version import SdkVersion
 from damlisk.detectors.validation.amount_tolerance import AmountTolerance
 from damlisk.detectors.validation.divide_multiply import DivideBeforeMultiply
 from damlisk.detectors.validation.hash_concat import HashConcatCollision
@@ -49,4 +50,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     UnsafePrimitive,
     DebugTrace,
     StuckAsset,
+    SdkVersion,
 )
