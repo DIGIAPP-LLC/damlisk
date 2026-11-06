@@ -29,6 +29,8 @@ class Usage:
     linked: set[str] = field(default_factory=set)
     ordered: set[str] = field(default_factory=set)
     consumed: set[str] = field(default_factory=set)
+    created: set[str] = field(default_factory=set)
+    called: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -43,6 +45,8 @@ class Usage:
         self.linked |= other.linked
         self.ordered |= other.ordered
         self.consumed |= other.consumed
+        self.created |= other.created
+        self.called |= other.called
 
 
 def exercised(update: lf.Update) -> lf.Expr | None:
@@ -54,6 +58,26 @@ def exercised(update: lf.Update) -> lf.Expr | None:
     if update.soft_exercise is not None:
         return update.soft_exercise.cid
     return None
+
+
+def create_arg(update: lf.Update) -> lf.Expr | None:
+    """Return the record that `update` creates a contract from, or None."""
+    if update.create is not None:
+        return update.create.expr
+    if update.create_interface is not None:
+        return update.create_interface.expr
+    return None
+
+
+def call_parts(update: lf.Update) -> list[lf.Expr]:
+    """Return the contract id and the choice argument of an exercise, or [] for other actions."""
+    if update.exercise is not None:
+        return [update.exercise.cid, update.exercise.arg]
+    if update.exercise_interface is not None:
+        return [update.exercise_interface.cid, update.exercise_interface.arg]
+    if update.soft_exercise is not None:
+        return [update.soft_exercise.cid, update.soft_exercise.arg]
+    return []
 
 
 def peel(expr: lf.Expr) -> lf.Expr:
@@ -120,6 +144,14 @@ class FieldFlow:
         """Return the contract-id fields of `var` that `expr` exercises a choice on (`archive`)."""
         return self.trace(expr, {var: WHOLE}).consumed
 
+    def created(self, expr: lf.Expr, var: str) -> set[str]:
+        """Return the fields of `var` that reach a created record in `expr`."""
+        return self.trace(expr, {var: WHOLE}).created
+
+    def called(self, expr: lf.Expr, var: str) -> set[str]:
+        """Return the fields of `var` that reach an exercised contract id or choice argument."""
+        return self.trace(expr, {var: WHOLE}).called
+
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
 
@@ -137,6 +169,12 @@ class FieldFlow:
             cid = exercised(node)
             if cid is not None:
                 usage.consumed |= self.trace(cid, aliases, visited).fields
+            record = create_arg(node)
+            if record is not None:
+                usage.created |= self.trace(record, aliases, visited).fields
+            parts = call_parts(node)
+            for part in parts:
+                usage.called |= self.trace(part, aliases, visited).fields
             return usage
         if node.var is not None:
             return Usage(fields=set(aliases.get(node.var, ())))

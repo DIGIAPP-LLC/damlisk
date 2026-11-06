@@ -14,6 +14,7 @@ from damlisk.lf.builtins import (
     is_compare,
     is_int,
     is_numeric,
+    is_party,
     is_time,
     join_name,
     lf_name,
@@ -488,3 +489,16 @@ def test_unsafe_name(expr, expected):
 )
 def test_trace_name(expr, expected):
     assert trace_name(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (lf.Type(prim=lf.Type.Prim(lf.PrimType.PARTY, ())), True),
+        (lf.Type(prim=lf.Type.Prim(lf.PrimType.TEXT, ())), False),
+        (lf.Type(var=lf.Type.Var("a", ())), False),
+    ],
+    ids=["party", "text", "type-var"],
+)
+def test_is_party(typ, expected):
+    assert is_party(typ) is expected

@@ -1,6 +1,7 @@
 from damlisk.detectors.abstract_detector import AbstractDetector
 from damlisk.detectors.assets.stuck_asset import StuckAsset
 from damlisk.detectors.authorization.controller_arg import ControllerFromArgument
+from damlisk.detectors.authorization.delegated_leak import DelegatedLeak
 from damlisk.detectors.authorization.hardcoded_party import HardcodedParty
 from damlisk.detectors.authorization.over_disclosure import OverDisclosure
 from damlisk.detectors.authorization.unprotected_archive import UnprotectedArchive
@@ -53,4 +54,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     StuckAsset,
     SdkVersion,
     Rtlo,
+    DelegatedLeak,
 )

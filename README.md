@@ -44,6 +44,7 @@ damlisk list-detectors
 | [`stuck-asset`](#stuck-asset) | Medium | Medium | Asset its owner cannot move: no owner-controlled consuming choice |
 | [`sdk-version`](#sdk-version) | Informational | High | DAR built for a Daml-LF 1.x target |
 | [`rtlo`](#rtlo) | High | High | Bidirectional control character (right-to-left override) in source or `Text` |
+| [`delegated-authority-leak`](#delegated-authority-leak) | High | Medium | Non-signatory controller passes parties or amounts into a create or exercise |
 
 ### boolean-cst
 
@@ -1469,3 +1470,91 @@ character.
 
 **Recommendation:** remove bidirectional control characters from sources and literals, and
 reject them in `Text` fields that are shown to users.
+
+### delegated-authority-leak
+
+**Non-signatory controller passes parties or amounts into a create or exercise.** It reports
+a choice whose controller is not a signatory of the contract, when the choice creates or
+exercises with `Party`, `Numeric` or `Int` fields of the choice argument (also inside a list
+or `Optional`) and the same action also carries contract data other than the controller's
+own fields (a signatory party, or a contract id the signatories stored).
+
+**Impact:** a choice body runs with the authority of the signatories and the controllers.
+When the controller picks the parties or amounts, the controller makes the signatories sign
+any contract or exercise they choose, such as minting tokens of any amount.
+
+**Example** (`examples/vulnerable/delegated-authority-leak/daml/Main.daml`):
+
+```haskell
+template IssueRight
+  with
+    issuer : Party
+    holder : Party
+    rules : ContractId Rules
+  where
+    signatory issuer
+    observer holder
+
+    nonconsuming choice Mint : ContractId Token
+      with
+        value : Decimal
+      controller holder
+      do create Token with issuer; owner = holder; amount = value
+
+    choice Grant : ContractId Token
+      with
+        payee : Party
+      controller holder
+      do create Token with issuer; owner = payee; amount = 10.0
+
+    nonconsuming choice Forward : ContractId Token
+      with
+        payee : Party
+        value : Decimal
+      controller holder
+      do exercise rules Pay with payee; value
+```
+
+```
+$ damlisk scan examples/vulnerable/delegated-authority-leak/delegated-authority-leak.dar --detect delegated-authority-leak
+[High] delegated-authority-leak Main.daml:53
+    Main:IssueRight.Forward: argument `payee`, `value` used with the signatories' authority
+[High] delegated-authority-leak Main.daml:47
+    Main:IssueRight.Grant: argument `payee` used with the signatories' authority
+[High] delegated-authority-leak Main.daml:41
+    Main:IssueRight.Mint: argument `value` used with the signatories' authority
+[High] delegated-authority-leak Main.daml:84
+    Main:IssueRight.Request: argument `value` used with the signatories' authority
+4 finding(s).
+```
+
+`Claim` (no argument), `Reissue` (controlled by the signatory `issuer`), `Capped` (`value`
+bounded by `assertMsg`), `Memo` (creates a `Note` signed only by the controller), `Redeem`
+(`value` is checked by the `ensure` of `Voucher`, `note` is `Text`), `Book` (creates a
+`Ticket` the holder co-signs), `Spend` (exercises `Rules.Charge` with `spender = holder`, so
+the holder acts on their own behalf), `Rules.Pay` and `Rules.Charge` (controlled by their
+signatory) are not reported. In `Request` the controller
+`requester` comes from the argument; only `value` is reported, since a party naming itself
+is not a leak.
+
+**How it works:** the detector traces the choice argument and the contract through the choice
+body, following package helpers, and collects the fields that reach a created record, an
+exercised contract id or an exercise argument (template and interface). Only parties and
+amounts are reported, as the check targets; text, contract ids and records are not.
+Arguments compared or bounded in the choice (`==`, `elem`, `<=`, ...), arguments used as
+controllers, and arguments whose name matches a field read by the `ensure` of a template the
+choice creates are dropped. A create is skipped when a controller field has the name of a
+signatory field of the created template (the controller signs it too, as in a transfer
+command), and an exercise is skipped when the controller is passed into it (the controller
+acts on their own behalf, as when paying through a preapproval). Checks made inside an exercised choice of another template, or
+through helpers that return `Either`, are not seen.
+
+**Results on real code:** `splice-amulet` 0.1.24 and 0.1.19 have 1 finding,
+`AmuletRules_AllocateDevelopmentFundCoupon`: the configured fund manager picks the
+`beneficiary` of a DSO-signed coupon (the `amount` is checked). This is a designed delegation
+to review, not a confirmed bug. 0.1.14, the token-standard API packages and
+`splice-wallet-payments` have none.
+
+**Recommendation:** take parties and amounts from contract fields the signatories agreed to,
+bound and check every argument before it is used (`assertMsg`, `ensure`), or make a
+signatory the controller.

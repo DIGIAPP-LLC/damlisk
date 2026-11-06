@@ -1,7 +1,16 @@
 import pytest
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.flow import THIS, FieldFlow, Usage, exercised, linked_fields, peel
+from damlisk.lf.flow import (
+    THIS,
+    FieldFlow,
+    Usage,
+    call_parts,
+    create_arg,
+    exercised,
+    linked_fields,
+    peel,
+)
 
 REF = lf.ModuleRef(lf.PackageRef("pkg"), lf.DottedName(segments=("Main",)))
 EQUAL = lf.Expr(builtin="EQUAL")
@@ -241,3 +250,75 @@ def test_consumed(expr, expected):
     values = CONSUME_VALUES | VALUES
 
     assert FieldFlow(values).consumed(expr, "arg") == expected
+
+
+def create(expr):
+    return lf.Expr(update=lf.Update(create=lf.Update.Create(None, expr)))
+
+
+def call(cid, arg):
+    return lf.Expr(update=lf.Update(exercise=lf.Update.Exercise(None, "Pay", cid, arg)))
+
+
+def soft_call(cid, arg):
+    soft = lf.Update.SoftExercise(None, "Pay", cid, arg)
+    return lf.Expr(update=lf.Update(soft_exercise=soft))
+
+
+def iface_create(expr):
+    made = lf.Update.CreateInterface(None, expr)
+    return lf.Expr(update=lf.Update(create_interface=made))
+
+
+SEND_VALUES = dict([helper("mint", lam(["rec"], create(var("rec"))))]) | VALUES
+
+
+@pytest.mark.parametrize(
+    "expr,created,called",
+    [
+        (create(proj("arg", "amount")), {"amount"}, set()),
+        (app(val("mint"), proj("arg", "amount")), {"amount"}, set()),
+        (call(proj("arg", "cid"), proj("arg", "payee")), set(), {"cid", "payee"}),
+        (iface_exercise(proj("arg", "cid")), set(), {"cid"}),
+        (create(proj("this", "amount")), set(), set()),
+        (app(val("show"), proj("arg", "amount")), set(), set()),
+    ],
+    ids=["create", "create-helper", "exercise", "interface", "contract-field", "no-action"],
+)
+def test_created_and_called(expr, created, called):
+    flow = FieldFlow(SEND_VALUES)
+
+    assert flow.created(expr, "arg") == created
+    assert flow.called(expr, "arg") == called
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (create(var("r")), "r"),
+        (iface_create(var("r")), "r"),
+        (call(var("c"), var("a")), None),
+        (fetch(var("c")), None),
+    ],
+    ids=["create", "interface-create", "exercise", "fetch"],
+)
+def test_create_arg(expr, expected):
+    record = create_arg(expr.update)
+
+    assert (record.var if record is not None else None) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (call(var("c"), var("a")), ["c", "a"]),
+        (iface_exercise(var("c")), ["c", "u"]),
+        (soft_call(var("c"), var("a")), ["c", "a"]),
+        (create(var("r")), []),
+    ],
+    ids=["exercise", "interface", "soft-exercise", "create"],
+)
+def test_call_parts(expr, expected):
+    parts = call_parts(expr.update)
+
+    assert [part.var for part in parts] == expected

@@ -1,0 +1,134 @@
+module Main where
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer
+    observer owner
+
+template Rules
+  with
+    issuer : Party
+  where
+    signatory issuer
+
+    nonconsuming choice Pay : ContractId Token
+      with
+        payee : Party
+        value : Decimal
+      controller issuer
+      do create Token with issuer; owner = payee; amount = value
+
+    nonconsuming choice Charge : ContractId Token
+      with
+        spender : Party
+        value : Decimal
+      controller issuer
+      do create Token with issuer; owner = spender; amount = value
+
+template IssueRight
+  with
+    issuer : Party
+    holder : Party
+    rules : ContractId Rules
+  where
+    signatory issuer
+    observer holder
+
+    nonconsuming choice Mint : ContractId Token
+      with
+        value : Decimal
+      controller holder
+      do create Token with issuer; owner = holder; amount = value
+
+    choice Grant : ContractId Token
+      with
+        payee : Party
+      controller holder
+      do create Token with issuer; owner = payee; amount = 10.0
+
+    nonconsuming choice Forward : ContractId Token
+      with
+        payee : Party
+        value : Decimal
+      controller holder
+      do exercise rules Pay with payee; value
+
+    choice Claim : ContractId Token
+      controller holder
+      do create Token with issuer; owner = holder; amount = 10.0
+
+    nonconsuming choice Reissue : ContractId Token
+      with
+        value : Decimal
+      controller issuer
+      do create Token with issuer; owner = holder; amount = value
+
+    nonconsuming choice Capped : ContractId Token
+      with
+        value : Decimal
+      controller holder
+      do
+        assertMsg "value too large" (value <= 100.0)
+        create Token with issuer; owner = holder; amount = value
+
+    nonconsuming choice Memo : ContractId Note
+      with
+        text : Text
+      controller holder
+      do create Note with holder; text
+
+    nonconsuming choice Request : ContractId Token
+      with
+        requester : Party
+        value : Decimal
+      controller requester
+      do create Token with issuer; owner = requester; amount = value
+
+    nonconsuming choice Redeem : ContractId Voucher
+      with
+        value : Decimal
+        note : Text
+      controller holder
+      do create Voucher with issuer; holder; value; note
+
+    nonconsuming choice Book : ContractId Ticket
+      with
+        value : Decimal
+      controller holder
+      do create Ticket with issuer; holder; value
+
+    nonconsuming choice Spend : ContractId Token
+      with
+        value : Decimal
+      controller holder
+      do exercise rules Charge with spender = holder; value
+
+template Ticket
+  with
+    issuer : Party
+    holder : Party
+    value : Decimal
+  where
+    signatory issuer, holder
+
+template Voucher
+  with
+    issuer : Party
+    holder : Party
+    value : Decimal
+    note : Text
+  where
+    signatory issuer
+    observer holder
+    ensure value > 0.0 && value <= 100.0
+
+template Note
+  with
+    holder : Party
+    text : Text
+  where
+    signatory holder
