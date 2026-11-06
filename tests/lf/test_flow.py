@@ -8,6 +8,7 @@ from damlisk.lf.flow import (
     call_parts,
     create_arg,
     exercised,
+    iface_cid,
     linked_fields,
     peel,
 )
@@ -322,3 +323,38 @@ def test_call_parts(expr, expected):
     parts = call_parts(expr.update)
 
     assert [part.var for part in parts] == expected
+
+
+def iface_fetch(cid):
+    return lf.Expr(update=lf.Update(fetch_interface=lf.Update.FetchInterface(None, cid)))
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (iface_exercise(var("c")), "c"),
+        (iface_fetch(var("c")), "c"),
+        (exercise(var("c")), None),
+        (fetch(var("c")), None),
+    ],
+    ids=["exercise", "fetch", "template-exercise", "template-fetch"],
+)
+def test_iface_cid(expr, expected):
+    cid = iface_cid(expr.update)
+
+    assert (cid.var if cid is not None else None) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (iface_exercise(proj("arg", "cid")), {"cid"}),
+        (iface_fetch(proj("arg", "cid")), {"cid"}),
+        (app(FOR_A, proj("arg", "cids"), lam(["c"], iface_exercise(var("c")))), {"cids"}),
+        (iface_exercise(proj("this", "cid")), set()),
+        (exercise(proj("arg", "cid")), set()),
+    ],
+    ids=["exercise", "fetch", "callback", "contract-field", "template-exercise"],
+)
+def test_iface_cids(expr, expected):
+    assert FieldFlow(VALUES).iface_cids(expr, "arg") == expected

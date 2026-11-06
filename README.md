@@ -45,6 +45,7 @@ damlisk list-detectors
 | [`sdk-version`](#sdk-version) | Informational | High | DAR built for a Daml-LF 1.x target |
 | [`rtlo`](#rtlo) | High | High | Bidirectional control character (right-to-left override) in source or `Text` |
 | [`delegated-authority-leak`](#delegated-authority-leak) | High | Medium | Non-signatory controller passes parties or amounts into a create or exercise |
+| [`untrusted-interface-exercise`](#untrusted-interface-exercise) | High | Medium | Interface contract id from the choice argument is exercised or fetched |
 
 ### boolean-cst
 
@@ -1558,3 +1559,87 @@ to review, not a confirmed bug. 0.1.14, the token-standard API packages and
 **Recommendation:** take parties and amounts from contract fields the signatories agreed to,
 bound and check every argument before it is used (`assertMsg`, `ensure`), or make a
 signatory the controller.
+
+### untrusted-interface-exercise
+
+**Interface contract id from the choice argument is exercised or fetched.** It reports a
+choice that exercises or fetches an interface contract whose id comes from the choice
+argument, when the contract has a signatory other than the controller.
+
+**Impact:** the controller picks the contract, so the implementation behind the interface can
+come from any vetted package. When the exercised interface choice is controlled by a party
+whose authority the current choice holds, the implementation runs with that party's authority
+and can create or exercise anything in that party's name. A fetch runs no ledger action, but
+its view is whatever the implementation returns.
+
+**Example** (`examples/vulnerable/untrusted-interface-exercise/daml/Main.daml`):
+
+```haskell
+template Desk
+  with
+    bank : Party
+    trader : Party
+    stored : ContractId Holding
+  where
+    signatory bank
+    observer trader
+
+    nonconsuming choice Settle : ()
+      with
+        holdingCid : ContractId Holding
+        receiver : Party
+      controller trader
+      do exercise holdingCid Send with receiver
+
+    nonconsuming choice SettleAll : ()
+      with
+        cids : [ContractId Holding]
+        receiver : Party
+      controller trader
+      do forA_ cids (\cid -> exercise cid Send with receiver)
+
+    nonconsuming choice Inspect : Decimal
+      with
+        holdingCid : ContractId Holding
+      controller trader
+      do
+        holding <- fetch holdingCid
+        pure (view holding).amount
+```
+
+```
+$ damlisk scan examples/vulnerable/untrusted-interface-exercise/untrusted-interface-exercise.dar --detect untrusted-interface-exercise
+[High] untrusted-interface-exercise Main.daml:62
+    Main:Desk.Inspect: interface contract id from argument `holdingCid`
+[High] untrusted-interface-exercise Main.daml:48
+    Main:Desk.Settle: interface contract id from argument `holdingCid`
+[High] untrusted-interface-exercise Main.daml:55
+    Main:Desk.SettleAll: interface contract id from argument `cids`
+[High] untrusted-interface-exercise Main.daml:106
+    Main:Pool.Drain: interface contract id from argument `holdingCid`
+4 finding(s).
+```
+
+`SettleStored` (the id is a contract field), `PayCash` (a concrete template), `SendCash` (an
+argument declared `ContractId Cash` and cast for the exercise), `BankSettle` and `Vault.Sweep`
+(the controller is the only signatory, so only their own authority is at risk) are not
+reported. `Pool.Drain` is reported because `bank` also signs the pool.
+
+**How it works:** the detector traces the choice argument through the choice body, following
+package helpers and callbacks such as `forA_`, and collects the fields that reach an interface
+exercise or an interface fetch. Fields declared as `ContractId T` or `[ContractId T]` for a
+template `T` are dropped. The declared type is not enforced on a contract id, so a choice that
+casts such a field to an interface without fetching it first is not reported. Interface
+choices and interface method implementations are not checked. Checks on the view are not
+counted, because the implementation controls the view.
+
+**Results on real code:** the Splice packages have no finding. `splice-amulet` 0.1.24 casts
+`externalPartyConfigState0Cid` to an interface in `Amulet_ExpireV2`, but declares it as a
+template id and fetches it first. The token-standard API packages exercise interfaces from
+their own choices, which the check skips. Splice documents the same risk on `expectedAdmin` in
+`TransferFactory_Transfer`: exercising a factory from an untrusted source is safe only
+"provided all vetted Daml packages only contain interface implementations that check the
+expected admin party".
+
+**Recommendation:** store the contract id on the contract, check the implementation's admin
+against a trusted party inside a vetted implementation, or exercise a concrete template.

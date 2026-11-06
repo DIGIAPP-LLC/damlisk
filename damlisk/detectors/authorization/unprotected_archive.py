@@ -39,12 +39,7 @@ class UnprotectedArchive(AbstractDetector):
     def _detect(self) -> list[Finding]:
         """Report each consuming choice none of whose controllers signs the contract."""
         flow = FieldFlow(self.index.values)
-        signers = {}
-        tmpls = self.index.template_decls()
-        for tmpl in tmpls:
-            sigs = tmpl.template.signatories
-            if sigs is not None:
-                signers[tmpl.owner] = flow.fields(sigs, tmpl.template.param)
+        signers = self.signers(flow)
         findings = []
         decls = self.index.choices()
         for decl in decls:

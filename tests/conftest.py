@@ -29,6 +29,13 @@ UNSAFE_DAR = ROOT / "examples" / "vulnerable" / "unsafe-primitive" / "unsafe-pri
 TRACE_DAR = ROOT / "examples" / "vulnerable" / "debug-trace" / "debug-trace.dar"
 STUCK_DAR = ROOT / "examples" / "vulnerable" / "stuck-asset" / "stuck-asset.dar"
 RTLO_DAR = ROOT / "examples" / "vulnerable" / "rtlo" / "rtlo.dar"
+IFACE_DAR = (
+    ROOT
+    / "examples"
+    / "vulnerable"
+    / "untrusted-interface-exercise"
+    / "untrusted-interface-exercise.dar"
+)
 LEAK_DAR = (
     ROOT / "examples" / "vulnerable" / "delegated-authority-leak" / "delegated-authority-leak.dar"
 )
@@ -175,3 +182,8 @@ def rtlo_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def leak_index() -> PackageIndex:
     return PackageIndex(Dar.load(LEAK_DAR))
+
+
+@pytest.fixture(scope="session")
+def iface_index() -> PackageIndex:
+    return PackageIndex(Dar.load(IFACE_DAR))

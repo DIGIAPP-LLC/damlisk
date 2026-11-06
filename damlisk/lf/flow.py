@@ -31,6 +31,7 @@ class Usage:
     consumed: set[str] = field(default_factory=set)
     created: set[str] = field(default_factory=set)
     called: set[str] = field(default_factory=set)
+    untrusted: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -47,6 +48,7 @@ class Usage:
         self.consumed |= other.consumed
         self.created |= other.created
         self.called |= other.called
+        self.untrusted |= other.untrusted
 
 
 def exercised(update: lf.Update) -> lf.Expr | None:
@@ -57,6 +59,15 @@ def exercised(update: lf.Update) -> lf.Expr | None:
         return update.exercise_interface.cid
     if update.soft_exercise is not None:
         return update.soft_exercise.cid
+    return None
+
+
+def iface_cid(update: lf.Update) -> lf.Expr | None:
+    """Return the contract id that `update` exercises or fetches through an interface, or None."""
+    if update.exercise_interface is not None:
+        return update.exercise_interface.cid
+    if update.fetch_interface is not None:
+        return update.fetch_interface.cid
     return None
 
 
@@ -152,6 +163,10 @@ class FieldFlow:
         """Return the fields of `var` that reach an exercised contract id or choice argument."""
         return self.trace(expr, {var: WHOLE}).called
 
+    def iface_cids(self, expr: lf.Expr, var: str) -> set[str]:
+        """Return the fields of `var` that `expr` exercises or fetches through an interface."""
+        return self.trace(expr, {var: WHOLE}).untrusted
+
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
 
@@ -169,6 +184,9 @@ class FieldFlow:
             cid = exercised(node)
             if cid is not None:
                 usage.consumed |= self.trace(cid, aliases, visited).fields
+            target = iface_cid(node)
+            if target is not None:
+                usage.untrusted |= self.trace(target, aliases, visited).fields
             record = create_arg(node)
             if record is not None:
                 usage.created |= self.trace(record, aliases, visited).fields

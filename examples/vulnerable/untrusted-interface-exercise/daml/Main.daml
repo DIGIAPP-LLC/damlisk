@@ -1,0 +1,124 @@
+module Main where
+
+import DA.Foldable (forA_)
+
+data HoldingView = HoldingView with
+    owner : Party
+    amount : Decimal
+  deriving (Eq, Show)
+
+interface Holding where
+  viewtype HoldingView
+
+  moveTo : Party -> Update ()
+
+  choice Send : ()
+    with
+      receiver : Party
+    controller (view this).owner
+    do moveTo this receiver
+
+template Cash
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer, owner
+
+    nonconsuming choice Pay : ()
+      with
+        receiver : Party
+      controller owner
+      do pure ()
+
+    interface instance Holding for Cash where
+      view = HoldingView with owner; amount
+      moveTo receiver = pure ()
+
+template Desk
+  with
+    bank : Party
+    trader : Party
+    stored : ContractId Holding
+  where
+    signatory bank
+    observer trader
+
+    nonconsuming choice Settle : ()
+      with
+        holdingCid : ContractId Holding
+        receiver : Party
+      controller trader
+      do exercise holdingCid Send with receiver
+
+    nonconsuming choice SettleAll : ()
+      with
+        cids : [ContractId Holding]
+        receiver : Party
+      controller trader
+      do forA_ cids (\cid -> exercise cid Send with receiver)
+
+    nonconsuming choice Inspect : Decimal
+      with
+        holdingCid : ContractId Holding
+      controller trader
+      do
+        holding <- fetch holdingCid
+        pure (view holding).amount
+
+    nonconsuming choice SettleStored : ()
+      with
+        receiver : Party
+      controller trader
+      do exercise stored Send with receiver
+
+    nonconsuming choice PayCash : ()
+      with
+        cashCid : ContractId Cash
+        receiver : Party
+      controller trader
+      do exercise cashCid Pay with receiver
+
+    nonconsuming choice SendCash : ()
+      with
+        cashCid : ContractId Cash
+        receiver : Party
+      controller trader
+      do
+        cash <- fetch cashCid
+        exercise (toInterfaceContractId @Holding cashCid) Send with receiver
+
+    nonconsuming choice BankSettle : ()
+      with
+        holdingCid : ContractId Holding
+        receiver : Party
+      controller bank
+      do exercise holdingCid Send with receiver
+
+template Pool
+  with
+    bank : Party
+    trader : Party
+  where
+    signatory bank, trader
+
+    nonconsuming choice Drain : ()
+      with
+        holdingCid : ContractId Holding
+        receiver : Party
+      controller trader
+      do exercise holdingCid Send with receiver
+
+template Vault
+  with
+    keeper : Party
+  where
+    signatory keeper
+
+    nonconsuming choice Sweep : ()
+      with
+        holdingCid : ContractId Holding
+        receiver : Party
+      controller keeper
+      do exercise holdingCid Send with receiver
