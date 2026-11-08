@@ -3,6 +3,7 @@ from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.flow import (
     THIS,
+    Assign,
     FieldFlow,
     Usage,
     call_parts,
@@ -358,3 +359,41 @@ def test_iface_cid(expr, expected):
 )
 def test_iface_cids(expr, expected):
     assert FieldFlow(VALUES).iface_cids(expr, "arg") == expected
+
+
+ASSET = lf.TypeConName(REF, ("Asset",))
+ASSET_CON = lf.Type.Con(ASSET, ())
+
+
+def rec_upd(record, name, value):
+    return lf.Expr(rec_upd=lf.Expr.RecUpd(ASSET_CON, name, record, value))
+
+
+def rec_con(**items):
+    fields = [lf.FieldWithExpr(name, value) for name, value in items.items()]
+    return lf.Expr(rec_con=lf.Expr.RecCon(ASSET_CON, fields))
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (rec_upd(var("this"), "owner", proj("arg", "to")), {Assign(ASSET, "owner", "to")}),
+        (rec_con(owner=proj("arg", "to")), {Assign(ASSET, "owner", "to")}),
+        (
+            app(FOR_A, proj("arg", "all"), lam(["p"], rec_con(owner=var("p")))),
+            {Assign(ASSET, "owner", "all")},
+        ),
+        (rec_upd(var("this"), "owner", proj("this", "to")), set()),
+        (rec_con(owner=proj("this", "to")), set()),
+    ],
+    ids=["update", "record", "callback", "update-from-contract", "record-from-contract"],
+)
+def test_assigned(expr, expected):
+    assert FieldFlow({}).trace(expr, {"arg": frozenset({"*"})}).assigned == expected
+
+
+def test_assigned_merges_into_sinks():
+    usage = Usage()
+    usage.add_sinks(Usage(assigned={Assign(ASSET, "owner", "to")}))
+
+    assert usage.assigned == {Assign(ASSET, "owner", "to")}

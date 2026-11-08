@@ -20,6 +20,13 @@ class PartialUse:
     function: str
 
 
+@dataclass(frozen=True)
+class Assign:
+    template: lf.TypeConName
+    field: str
+    source: str
+
+
 @dataclass
 class Usage:
     fields: set[str] = field(default_factory=set)
@@ -32,6 +39,7 @@ class Usage:
     created: set[str] = field(default_factory=set)
     called: set[str] = field(default_factory=set)
     untrusted: set[str] = field(default_factory=set)
+    assigned: set[Assign] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -49,6 +57,7 @@ class Usage:
         self.created |= other.created
         self.called |= other.called
         self.untrusted |= other.untrusted
+        self.assigned |= other.assigned
 
 
 def exercised(update: lf.Update) -> lf.Expr | None:
@@ -202,6 +211,10 @@ class FieldFlow:
             return self.trace_block(node.let, aliases, visited, True)
         if node.app is not None:
             return self.trace_call(node.app, aliases, visited)
+        if node.rec_upd is not None:
+            return self.trace_update(node.rec_upd, aliases, visited)
+        if node.rec_con is not None:
+            return self.trace_record(node.rec_con, aliases, visited)
         return self.trace_children(node, aliases, visited)
 
     def trace_children(self, node: Node, aliases: Aliases, visited: Visited) -> Usage:
@@ -221,6 +234,25 @@ class FieldFlow:
         if labels == WHOLE:
             return Usage(fields={proj.field})
         return Usage(fields=set(labels))
+
+    def trace_update(self, upd: lf.Expr.RecUpd, aliases: Aliases, visited: Visited) -> Usage:
+        """Handle `record with field = value`: record what flows into the updated field."""
+        usage = self.trace(upd.record, aliases, visited)
+        value = self.trace(upd.update, aliases, visited)
+        usage.merge(value)
+        for source in value.fields:
+            usage.assigned.add(Assign(upd.tycon.tycon, upd.field, source))
+        return usage
+
+    def trace_record(self, rec: lf.Expr.RecCon, aliases: Aliases, visited: Visited) -> Usage:
+        """Handle `Record with fields`: record what flows into each field."""
+        usage = Usage()
+        for item in rec.fields:
+            value = self.trace(item.expr, aliases, visited)
+            usage.merge(value)
+            for source in value.fields:
+                usage.assigned.add(Assign(rec.tycon.tycon, item.field, source))
+        return usage
 
     def trace_block(self, block: lf.Block, aliases: Aliases, visited: Visited, pure: bool) -> Usage:
         """Handle `let` (pure) and `do` blocks.

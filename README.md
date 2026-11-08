@@ -46,6 +46,7 @@ damlisk list-detectors
 | [`rtlo`](#rtlo) | High | High | Bidirectional control character (right-to-left override) in source or `Text` |
 | [`delegated-authority-leak`](#delegated-authority-leak) | High | Medium | Non-signatory controller passes parties or amounts into a create or exercise |
 | [`untrusted-interface-exercise`](#untrusted-interface-exercise) | High | Medium | Interface contract id from the choice argument is exercised or fetched |
+| [`value-to-arbitrary-party`](#value-to-arbitrary-party) | High | Medium | Asset created for an owner from the choice argument by a non-owner controller |
 
 ### boolean-cst
 
@@ -1643,3 +1644,80 @@ expected admin party".
 
 **Recommendation:** store the contract id on the contract, check the implementation's admin
 against a trusted party inside a vetted implementation, or exercise a concrete template.
+
+### value-to-arbitrary-party
+
+**Asset created for an owner from the choice argument by a non-owner controller.** It reports
+a choice that builds a template with an `owner` or `holder` field, sets that field from the
+choice argument, and is controlled by a party that neither holds nor signs the current
+contract.
+
+**Impact:** a party with no claim on the asset decides who receives it. Anyone who can
+exercise the choice moves the asset to any party or mints it for one.
+
+**Example** (`examples/vulnerable/value-to-arbitrary-party/daml/Main.daml`):
+
+```haskell
+template Asset
+  with
+    issuer : Party
+    owner : Party
+    auditor : Party
+    allowed : [Party]
+    memo : Text
+  where
+    signatory issuer
+    observer owner, auditor, allowed
+
+    choice Transfer : ContractId Asset
+      with
+        requester : Party
+        newOwner : Party
+      controller requester
+      do create this with owner = newOwner
+
+    choice OwnerMove : ContractId Asset
+      with
+        newOwner : Party
+      controller owner
+      do create this with owner = newOwner
+```
+
+```text
+$ damlisk scan examples/vulnerable/value-to-arbitrary-party/value-to-arbitrary-party.dar --detect value-to-arbitrary-party
+[High] value-to-arbitrary-party Main.daml:24
+    Main:Asset.Seize: argument `target` sets `owner` of the asset
+[High] value-to-arbitrary-party Main.daml:30
+    Main:Asset.Spread: argument `takers` sets `owner` of the asset
+[High] value-to-arbitrary-party Main.daml:17
+    Main:Asset.Transfer: argument `newOwner` sets `owner` of the asset
+[High] value-to-arbitrary-party Main.daml:104
+    Main:Factory.AgentMint: argument `receiver` sets `owner` of the asset
+4 finding(s).
+```
+
+These choices are not reported:
+
+- `OwnerMove` and `IssuerMove`: the controller holds or signs the contract.
+- `CheckedMove` and `CheckedCaller`: the new owner or the argument controller is compared.
+- `Claim`: the new owner is the controller, which
+  [`controller-from-argument`](#controller-from-argument) covers.
+- `PaidMint`: the controller is passed into an exercise, so they pay from their own assets.
+- `CopyOwner` and `Reissue`: the owner comes from a fetched contract or a contract field.
+- `SetMemo` and `NoteFor`: no `owner` or `holder` field is set from the argument.
+
+**How it works:** the detector traces the choice argument through the choice body, following
+package helpers and callbacks such as `forA_`, and records what reaches each field of a record
+built for a template. Building that record counts as the create, because damlc passes the
+record to a generated helper that holds the `create`. A record copied whole from the argument
+is not seen, and neither are fields named other than `owner` or `holder`. Any comparison of the
+argument counts as a check, so `newOwner /= owner` hides a finding. Any exercise that receives
+the controller counts as payment, even one that moves no value.
+
+**Results on real code:** the Splice packages have no finding. `splice-amulet` 0.1.24 has four
+choices that set `owner` of an `Amulet` from the argument. `AmuletRules_Mint` is controlled by
+the signatory `dso`. `AmuletRules_Transfer`, `AmuletRules_BuyMemberTraffic` and
+`TransferPreapproval_SendV2` compare their argument controller and pass it into an exercise.
+
+**Recommendation:** make the current owner or a signatory the controller, or check the new
+owner against parties stored on the contract.

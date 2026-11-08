@@ -41,7 +41,12 @@ TRACES = {
     ("DA.Internal.Prelude", "debug"),
 }
 CLOCKS = {("DA.Internal.LF", "getTime"), ("DA.Internal.LF", "$cgetTime")}
-MEMBERSHIP = {("DA.Internal.Prelude", "elem"), ("DA.Internal.Prelude", "notElem")}
+MEMBERSHIP = {
+    ("DA.Internal.Prelude", "elem"),
+    ("DA.Internal.Prelude", "notElem"),
+    ("DA.Assert", "==="),
+    ("DA.Assert", "=/="),
+}
 PARTIAL = {
     ("DA.List", "head"),
     ("DA.List", "tail"),
@@ -236,7 +241,7 @@ def reads_time(name: lf.ValName) -> bool:
 
 
 def compare_name(fun: lf.Expr) -> str | None:
-    """Return the comparison `fun` performs (`==`, `/=`, `elem`, `notElem`), or None."""
+    """Return the comparison `fun` performs (`==`, `/=`, `===`, `elem`, `notElem`), or None."""
     operator = eq_operator(fun)
     if operator is not None:
         return operator

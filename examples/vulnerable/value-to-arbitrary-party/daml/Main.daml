@@ -1,0 +1,145 @@
+module Main where
+
+import DA.Assert ((===))
+import DA.Foldable (forA_)
+
+template Asset
+  with
+    issuer : Party
+    owner : Party
+    auditor : Party
+    allowed : [Party]
+    memo : Text
+  where
+    signatory issuer
+    observer owner, auditor, allowed
+
+    choice Transfer : ContractId Asset
+      with
+        requester : Party
+        newOwner : Party
+      controller requester
+      do create this with owner = newOwner
+
+    choice Seize : ContractId Asset
+      with
+        target : Party
+      controller auditor
+      do create this with owner = target
+
+    choice Spread : ()
+      with
+        takers : [Party]
+      controller auditor
+      do
+        forA_ takers \taker -> create this with owner = taker
+
+    choice OwnerMove : ContractId Asset
+      with
+        newOwner : Party
+      controller owner
+      do create this with owner = newOwner
+
+    choice IssuerMove : ContractId Asset
+      with
+        newOwner : Party
+      controller issuer
+      do create this with owner = newOwner
+
+    choice CheckedMove : ContractId Asset
+      with
+        newOwner : Party
+      controller auditor
+      do
+        assertMsg "not allowed" (newOwner `elem` allowed)
+        create this with owner = newOwner
+
+    choice CheckedCaller : ContractId Asset
+      with
+        requester : Party
+        newOwner : Party
+      controller requester
+      do
+        requester === owner
+        create this with owner = newOwner
+
+    choice Claim : ContractId Asset
+      with
+        claimer : Party
+      controller claimer
+      do create this with owner = claimer
+
+    choice SetMemo : ContractId Asset
+      with
+        text : Text
+      controller auditor
+      do create this with memo = text
+
+    choice CopyOwner : ContractId Asset
+      with
+        srcCid : ContractId Asset
+      controller auditor
+      do
+        src <- fetch srcCid
+        create this with owner = src.owner
+
+    choice Reissue : ContractId Asset
+      controller auditor
+      do create this with owner = issuer
+
+template Factory
+  with
+    issuer : Party
+    agent : Party
+  where
+    signatory issuer
+    observer agent
+
+    nonconsuming choice Mint : ContractId Asset
+      with
+        receiver : Party
+      controller issuer
+      do create Asset with issuer; owner = receiver; auditor = issuer; allowed = []; memo = ""
+
+    nonconsuming choice AgentMint : ContractId Asset
+      with
+        receiver : Party
+      controller agent
+      do create Asset with issuer; owner = receiver; auditor = issuer; allowed = []; memo = ""
+
+    nonconsuming choice NoteFor : ContractId Note
+      with
+        reader : Party
+      controller agent
+      do create Note with issuer; reader
+
+    nonconsuming choice PaidMint : ContractId Asset
+      with
+        payer : Party
+        feeCid : ContractId Fee
+        receiver : Party
+      controller payer
+      do
+        exercise feeCid Pay with from = payer
+        create Asset with issuer; owner = receiver; auditor = issuer; allowed = []; memo = ""
+
+template Note
+  with
+    issuer : Party
+    reader : Party
+  where
+    signatory issuer
+
+template Fee
+  with
+    issuer : Party
+    amount : Decimal
+  where
+    signatory issuer
+    ensure amount > 0.0
+
+    nonconsuming choice Pay : ()
+      with
+        from : Party
+      controller from
+      do pure ()
