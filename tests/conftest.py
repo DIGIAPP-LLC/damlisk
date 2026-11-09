@@ -38,6 +38,7 @@ IFACE_DAR = (
 )
 DEPEND_DAR = ROOT / "examples" / "vulnerable" / "time-dependence" / "time-dependence.dar"
 STALE_DAR = ROOT / "examples" / "vulnerable" / "stale-fetch" / "stale-fetch.dar"
+OPTIONAL_DAR = ROOT / "examples" / "vulnerable" / "ignored-optional" / "ignored-optional.dar"
 UNBOUNDED_DAR = (
     ROOT / "examples" / "vulnerable" / "unbounded-input-loop" / "unbounded-input-loop.dar"
 )
@@ -227,3 +228,8 @@ def arbitrary_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def iface_index() -> PackageIndex:
     return PackageIndex(Dar.load(IFACE_DAR))
+
+
+@pytest.fixture(scope="session")
+def optional_index() -> PackageIndex:
+    return PackageIndex(Dar.load(OPTIONAL_DAR))

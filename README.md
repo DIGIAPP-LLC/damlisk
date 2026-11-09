@@ -52,6 +52,7 @@ damlisk list-detectors
 | [`ledger-op-in-loop`](#ledger-op-in-loop) | Low | Medium | Create, exercise or fetch inside a loop |
 | [`unbounded-input-loop`](#unbounded-input-loop) | Medium | Medium | Loop over a list from the choice argument with no length check |
 | [`stale-fetch`](#stale-fetch) | Medium | Medium | Fetched value used after the contract was replaced by a successor |
+| [`ignored-optional`](#ignored-optional) | Medium | Medium | `Optional` result discarded or forced with `fromSome` |
 
 ### boolean-cst
 
@@ -2035,3 +2036,53 @@ are not followed.
 
 **Recommendation:** fetch the successor contract id the choice returns, or compute the new
 values before the exercise.
+
+### ignored-optional
+
+**`Optional` result discarded or forced with `fromSome`.** It reports a `do` block that binds
+an `Optional` result, for example `r <- lookupByKey @T k` or an exercise of a choice that
+returns `Optional`, and then never uses it or passes it straight to `fromSome`.
+
+**Impact:** an unused result usually means a lookup that was meant as a check is never
+checked. `fromSome` turns the `None` case into an abort with a generic error instead of a
+handled failure.
+
+**Example** (`examples/vulnerable/ignored-optional/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice CheckOnly : ()
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        pure ()
+
+    nonconsuming choice ForceFind : Party
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        pure (fromSome found)
+```
+
+```text
+$ damlisk scan examples/vulnerable/ignored-optional/ignored-optional.dar --detect ignored-optional
+[Medium] ignored-optional Main.daml:18
+    Main:Registry.CheckOnly.update: `found` is never used
+[Medium] ignored-optional Main.daml:26
+    Main:Registry.ForceFind.update: `found` is forced with fromSome
+[Medium] ignored-optional Main.daml:34
+    Main:Registry.ForceHelper.update: `found` is forced with fromSome
+3 finding(s).
+```
+
+`Matched` (`case found of None -> abort ...`), `Noted` (`fromSomeNote`) and `Defaulted`
+(`fromOptional`) are not reported.
+
+**How it works:** for each binding of an update `do` block whose type is `Optional`, it
+reports the binding when the variable is not mentioned by a later binding or the body, or
+when it is passed directly to `DA.Optional.fromSome`. Pure `let` bindings are skipped, so
+`fromSome` on a choice argument is left to `partial-function`. A value forced inside a
+helper after being passed on, or via `fromJust`, is not followed.

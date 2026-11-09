@@ -1,0 +1,69 @@
+module Main where
+
+import DA.Optional (fromSome, fromSomeNote, fromOptional)
+
+template Registry
+  with
+    admin : Party
+    members : [Party]
+  where
+    signatory admin
+
+    nonconsuming choice Find : Optional Party
+      with
+        name : Party
+      controller admin
+      do pure (if name `elem` members then Some name else None)
+
+    nonconsuming choice CheckOnly : ()
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        pure ()
+
+    nonconsuming choice ForceFind : Party
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        pure (fromSome found)
+
+    nonconsuming choice ForceHelper : Party
+      with
+        name : Party
+      controller admin
+      do
+        found <- findMember self name
+        pure (fromSome found)
+
+    nonconsuming choice Matched : Party
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        case found of
+          None -> abort "not a member"
+          Some who -> pure who
+
+    nonconsuming choice Noted : Party
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        pure (fromSomeNote "not a member" found)
+
+    nonconsuming choice Defaulted : Party
+      with
+        name : Party
+      controller admin
+      do
+        found <- exercise self Find with name
+        pure (fromOptional admin found)
+
+findMember : ContractId Registry -> Party -> Update (Optional Party)
+findMember cid name = exercise cid Find with name

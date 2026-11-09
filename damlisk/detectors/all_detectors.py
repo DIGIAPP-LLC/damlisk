@@ -25,6 +25,7 @@ from damlisk.detectors.upgrade.sdk_version import SdkVersion
 from damlisk.detectors.validation.amount_tolerance import AmountTolerance
 from damlisk.detectors.validation.divide_multiply import DivideBeforeMultiply
 from damlisk.detectors.validation.hash_concat import HashConcatCollision
+from damlisk.detectors.validation.ignored_optional import IgnoredOptional
 from damlisk.detectors.validation.missing_amount import MissingAmountCheck
 from damlisk.detectors.validation.missing_ensure import MissingEnsure
 from damlisk.detectors.validation.nonconsuming_create import NonconsumingCreate
@@ -69,4 +70,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     LedgerOpInLoop,
     UnboundedInputLoop,
     StaleFetch,
+    IgnoredOptional,
 )
