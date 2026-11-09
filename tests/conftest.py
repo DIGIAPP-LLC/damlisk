@@ -37,6 +37,7 @@ IFACE_DAR = (
     / "untrusted-interface-exercise.dar"
 )
 DEPEND_DAR = ROOT / "examples" / "vulnerable" / "time-dependence" / "time-dependence.dar"
+RANDOM_DAR = ROOT / "examples" / "vulnerable" / "weak-randomness" / "weak-randomness.dar"
 ARBITRARY_DAR = (
     ROOT / "examples" / "vulnerable" / "value-to-arbitrary-party" / "value-to-arbitrary-party.dar"
 )
@@ -191,6 +192,11 @@ def leak_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def depend_index() -> PackageIndex:
     return PackageIndex(Dar.load(DEPEND_DAR))
+
+
+@pytest.fixture(scope="session")
+def random_index() -> PackageIndex:
+    return PackageIndex(Dar.load(RANDOM_DAR))
 
 
 @pytest.fixture(scope="session")

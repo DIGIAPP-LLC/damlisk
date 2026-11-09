@@ -48,6 +48,7 @@ damlisk list-detectors
 | [`untrusted-interface-exercise`](#untrusted-interface-exercise) | High | Medium | Interface contract id from the choice argument is exercised or fetched |
 | [`value-to-arbitrary-party`](#value-to-arbitrary-party) | High | Medium | Asset created for an owner from the choice argument by a non-owner controller |
 | [`time-dependence`](#time-dependence) | Low | Medium | Ledger time decides a branch |
+| [`weak-randomness`](#weak-randomness) | High | Medium | Ledger time or a hash picks a list element or map entry |
 
 ### boolean-cst
 
@@ -1788,3 +1789,66 @@ interval.
 
 **Recommendation:** keep time windows much longer than the skew, accept that a deadline is
 fuzzy by the skew, and never rely on ledger time for ordering or exact instants.
+
+### weak-randomness
+
+**Ledger time or a hash picks a list element or map entry.** It reports a choice that uses
+the ledger time (`getTime`) or a `sha256`/`keccak256` hash as randomness and lets it reach the
+index of `!!`, or that uses the ledger time as the key of a map lookup.
+
+**Impact:** the submitter chooses the ledger time within the skew window and can compute any
+hash of ledger data in advance, so the pick is predictable and can be steered, for example
+the winner of a draw.
+
+**Example** (`examples/vulnerable/weak-randomness/daml/Main.daml`):
+
+```haskell
+    choice DrawByTime : ContractId Prize
+      controller host
+      do
+        now <- getTime
+        let us = micros now started
+        let winner = players !! (us % length players)
+        create Prize with host; winner
+
+    choice DrawByArg : ContractId Prize
+      with
+        pick : Int
+      controller host
+      do
+        let winner = players !! (pick % length players)
+        create Prize with host; winner
+```
+
+```text
+$ damlisk scan examples/vulnerable/weak-randomness/weak-randomness.dar --detect weak-randomness
+[High] weak-randomness Main.daml:33
+    Main:Lottery.DrawByHash: a hash picks a list element
+[High] weak-randomness Main.daml:41
+    Main:Lottery.DrawByHelper: ledger time picks a list element
+[High] weak-randomness Main.daml:55
+    Main:Lottery.DrawByMap: ledger time picks a map entry
+[High] weak-randomness Main.daml:25
+    Main:Lottery.DrawByTime: ledger time picks a list element
+4 finding(s).
+```
+
+`DrawByArg` (the index comes from the argument), `FindByHash` (a map lookup keyed by a
+hash), `Seal` (the hash is only stored) and
+`Close` (the time only decides a branch, which [`time-dependence`](#time-dependence) covers)
+are not reported.
+
+**How it works:** a variable bound to `getTime` carries the ledger time and the result of
+`sha256` or `keccak256` carries a hash, whatever it was computed from. The detector follows
+both through `let`, arithmetic, package helpers and library functions, and reports the choice
+when either reaches an argument of `DA.List.!!`, or when the ledger time reaches an argument
+of a map lookup (`lookup`, `member` and `findWithDefault` of `DA.Map` and `DA.TextMap`, and
+the `GenMap` builtin). A map lookup keyed by a hash is not reported, because a hash is a
+common key that identifies an entry rather than selects one at random. Other ways of
+selecting, such as a `case` on `seed % n` or sorting by a hash, are not checked.
+
+**Results on real code:** no findings on `splice-amulet`, `splice-wallet-payments` or
+`splice-util`; none of them indexes a list with time or a hash, or looks up a map by time.
+
+**Recommendation:** do not derive randomness on the ledger. Use a commit-reveal scheme
+between the parties or an external randomness source whose result is signed and verified.

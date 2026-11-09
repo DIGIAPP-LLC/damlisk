@@ -1,0 +1,95 @@
+module Main where
+
+import DA.Text qualified as T
+import DA.Optional (fromOptional)
+import DA.List ((!!))
+import DA.Map qualified as M
+import DA.Time (convertRelTimeToMicroseconds, subTime)
+
+micros : Time -> Time -> Int
+micros now start = convertRelTimeToMicroseconds (subTime now start)
+
+pickAt : [Party] -> Int -> Party
+pickAt players seed = players !! (seed % length players)
+
+template Lottery
+  with
+    host : Party
+    players : [Party]
+    started : Time
+    round : Int
+  where
+    signatory host
+    observer players
+
+    choice DrawByTime : ContractId Prize
+      controller host
+      do
+        now <- getTime
+        let us = micros now started
+        let winner = players !! (us % length players)
+        create Prize with host; winner
+
+    choice DrawByHash : ContractId Prize
+      controller host
+      do
+        let digest = T.sha256 (show host <> show round)
+        let seed = fromOptional 0 (T.parseInt (T.take 6 digest))
+        let winner = players !! (seed % length players)
+        create Prize with host; winner
+
+    choice DrawByHelper : ContractId Prize
+      controller host
+      do
+        now <- getTime
+        create Prize with host; winner = pickAt players (micros now started)
+
+    choice DrawByArg : ContractId Prize
+      with
+        pick : Int
+      controller host
+      do
+        let winner = players !! (pick % length players)
+        create Prize with host; winner
+
+    choice DrawByMap : ContractId Prize
+      controller host
+      do
+        now <- getTime
+        let byIndex = M.fromList (zip [0 .. length players - 1] players)
+        let picked = M.lookup (micros now started % length players) byIndex
+        create Prize with host; winner = fromOptional host picked
+
+    choice FindByHash : ContractId Prize
+      controller host
+      do
+        let byHash = M.fromList (map (\p -> (T.sha256 (show p), p)) players)
+        let picked = M.lookup (T.sha256 (show host)) byHash
+        create Prize with host; winner = fromOptional host picked
+
+    choice Seal : ContractId Receipt
+      controller host
+      do
+        let digest = T.sha256 (show players)
+        create Receipt with host; digest
+
+    choice Close : ()
+      controller host
+      do
+        now <- getTime
+        assertMsg "early" (now > started)
+
+template Prize
+  with
+    host : Party
+    winner : Party
+  where
+    signatory host
+    observer winner
+
+template Receipt
+  with
+    host : Party
+    digest : Text
+  where
+    signatory host

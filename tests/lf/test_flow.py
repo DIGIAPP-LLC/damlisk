@@ -3,6 +3,7 @@ from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.flow import (
     CLOCK,
+    HASH,
     THIS,
     Assign,
     FieldFlow,
@@ -452,3 +453,56 @@ def test_branched(expr, clock, expected):
 )
 def test_reads_clock(expr, expected):
     assert FieldFlow({}).reads_clock(expr) is expected
+
+
+STD_LIST = lf.ModuleRef(lf.PackageRef("std"), lf.DottedName(("DA", "List")))
+STD_TEXT = lf.ModuleRef(lf.PackageRef("std"), lf.DottedName(("DA", "Text")))
+INDEX = lf.Expr(val=lf.ValName(STD_LIST, ("$u0021$u0021",)))
+SHA256 = lf.Expr(val=lf.ValName(STD_TEXT, ("sha256",)))
+LOOKUP = lf.Expr(builtin="GENMAP_LOOKUP")
+PICK_VALUES = dict([helper("pickAt", lam(["xs", "seed"], app(INDEX, var("xs"), var("seed"))))])
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (do_bind("now", GET_TIME, app(INDEX, proj("this", "xs"), var("now"))), {CLOCK, THIS}),
+        (
+            let("h", app(SHA256, proj("this", "seed")), app(INDEX, var("xs"), var("h"))),
+            {HASH, THIS},
+        ),
+        (do_bind("now", GET_TIME, app(val("pickAt"), var("xs"), var("now"))), {CLOCK}),
+        (app(INDEX, var("xs"), proj("arg", "pick")), {"pick"}),
+        (let("h", app(SHA256, var("x")), app(val("show"), var("h"))), set()),
+    ],
+    ids=["clock-index", "hash-index", "helper-index", "argument-index", "hash-unused"],
+)
+def test_indexed(expr, expected):
+    flow = FieldFlow(PICK_VALUES, clock=True, hashes=True)
+
+    assert flow.picks(expr, "arg", "this").indexed == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (do_bind("now", GET_TIME, app(LOOKUP, var("now"), var("m"))), {CLOCK}),
+        (let("h", app(SHA256, var("x")), app(LOOKUP, var("h"), var("m"))), {HASH}),
+        (app(LOOKUP, proj("arg", "key"), proj("this", "m")), {"key", THIS}),
+        (do_bind("now", GET_TIME, app(INDEX, var("xs"), var("now"))), set()),
+    ],
+    ids=["clock-key", "hash-key", "argument-key", "index-only"],
+)
+def test_keyed(expr, expected):
+    flow = FieldFlow(PICK_VALUES, clock=True, hashes=True)
+
+    assert flow.picks(expr, "arg", "this").keyed == expected
+
+
+@pytest.mark.parametrize(
+    "hashes,expected", [(True, {HASH}), (False, set())], ids=["hashes-on", "hashes-off"]
+)
+def test_hash_source(hashes, expected):
+    flow = FieldFlow({}, hashes=hashes)
+
+    assert flow.fields(app(SHA256, lf.Expr(prim_lit=lf.PrimLit(text="x"))), "arg") == expected

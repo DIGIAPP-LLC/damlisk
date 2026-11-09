@@ -3,12 +3,22 @@ from dataclasses import dataclass, field
 
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import compare_name, order_name, partial_name, time_name, untyped
+from damlisk.lf.builtins import (
+    compare_name,
+    hash_name,
+    index_name,
+    lookup_name,
+    order_name,
+    partial_name,
+    time_name,
+    untyped,
+)
 from damlisk.lf.tree import child_terms, find_all, used_later
 
 WHOLE = frozenset({"*"})
 THIS = "@this"
 CLOCK = "@now"
+HASH = "@hash"
 Aliases = dict[str, frozenset[str]]
 Visited = frozenset[lf.ValName]
 Node = lf.Expr | lf.Update
@@ -42,6 +52,8 @@ class Usage:
     untrusted: set[str] = field(default_factory=set)
     assigned: set[Assign] = field(default_factory=set)
     branched: set[str] = field(default_factory=set)
+    indexed: set[str] = field(default_factory=set)
+    keyed: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -61,6 +73,8 @@ class Usage:
         self.untrusted |= other.untrusted
         self.assigned |= other.assigned
         self.branched |= other.branched
+        self.indexed |= other.indexed
+        self.keyed |= other.keyed
 
 
 def exercised(update: lf.Update) -> lf.Expr | None:
@@ -143,13 +157,17 @@ class Helper:
 
 
 class FieldFlow:
-    def __init__(self, values: dict[lf.ValName, lf.DefValue], clock: bool = False) -> None:
+    def __init__(
+        self, values: dict[lf.ValName, lf.DefValue], clock: bool = False, hashes: bool = False
+    ) -> None:
         """Remember all package values, so calls to compiler helpers can be followed.
 
-        With `clock`, a variable bound to the ledger time carries the `CLOCK` field.
+        With `clock`, a variable bound to the ledger time carries the `CLOCK` field; with
+        `hashes`, the result of `sha256` or `keccak256` carries the `HASH` field.
         """
         self.values = values
         self.clock = clock
+        self.hashes = hashes
 
     def fields(self, expr: lf.Expr, var: str) -> set[str]:
         """Return the fields of record variable `var` that `expr` uses."""
@@ -186,6 +204,13 @@ class FieldFlow:
     def branched(self, expr: lf.Expr, var: str, this: str) -> set[str]:
         """Return the fields of `var` and `this` that decide a `case`, `if` or assertion."""
         return self.trace(expr, {var: WHOLE, this: frozenset({THIS})}).branched
+
+    def picks(self, expr: lf.Expr, var: str, this: str) -> Usage:
+        """Trace `var` and `this` through `expr` for the values that pick an element.
+
+        `indexed` holds the fields that reach `!!`; `keyed` those that reach a map lookup.
+        """
+        return self.trace(expr, {var: WHOLE, this: frozenset({THIS})})
 
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
@@ -310,6 +335,8 @@ class FieldFlow:
         comparison = self.resolve(call.fun, compare_name)
         partial = self.resolve(call.fun, partial_name)
         ordering = self.resolve(call.fun, order_name)
+        index = self.resolve(call.fun, index_name)
+        lookup = self.resolve(call.fun, lookup_name)
         for arg in args:
             usage.add_sinks(arg)
             if comparison is not None:
@@ -318,9 +345,15 @@ class FieldFlow:
                 usage.partial |= {PartialUse(name, partial) for name in arg.fields}
             if ordering is not None:
                 usage.ordered |= arg.fields
+            if index is not None:
+                usage.indexed |= arg.fields
+            if lookup is not None:
+                usage.keyed |= arg.fields
         if comparison is not None:
             usage.linked |= linked_fields(args)
         usage.merge(self.trace_callbacks(call, args, aliases, visited))
+        if self.hashes and self.resolve(call.fun, hash_name) is not None:
+            usage.fields.add(HASH)
         helper = self.helper(call.fun, visited)
         if helper is None:
             usage.merge(self.trace(call.fun, aliases, visited))

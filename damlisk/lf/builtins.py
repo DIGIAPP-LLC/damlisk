@@ -41,6 +41,16 @@ TRACES = {
     ("DA.Internal.Prelude", "debug"),
 }
 CLOCKS = {("DA.Internal.LF", "getTime"), ("DA.Internal.LF", "$cgetTime")}
+INDEXES = {("DA.List", "!!")}
+LOOKUPS = {
+    ("DA.Map", "lookup"),
+    ("DA.Map", "member"),
+    ("DA.Map", "findWithDefault"),
+    ("DA.TextMap", "lookup"),
+    ("DA.TextMap", "member"),
+    ("DA.TextMap", "findWithDefault"),
+}
+LOOKUP_OPS = {"GENMAP_LOOKUP": "lookup", "TEXTMAP_LOOKUP": "lookup"}
 MEMBERSHIP = {
     ("DA.Internal.Prelude", "elem"),
     ("DA.Internal.Prelude", "notElem"),
@@ -300,6 +310,25 @@ def time_name(fun: lf.Expr) -> str | None:
     """Return the name of the library action `fun` if it reads the ledger time, or None."""
     fun = untyped(fun)
     if fun.val is None or not reads_time(fun.val):
+        return None
+    module, name = qual_name(fun.val)
+    return name
+
+
+def index_name(fun: lf.Expr) -> str | None:
+    """Return `!!` if `fun` picks a list element by its position, or None."""
+    fun = untyped(fun)
+    if fun.val is not None and qual_name(fun.val) in INDEXES:
+        return "!!"
+    return None
+
+
+def lookup_name(fun: lf.Expr) -> str | None:
+    """Return the name of the map lookup `fun` performs (`Map`, `TextMap`, `GenMap`), or None."""
+    fun = untyped(fun)
+    if fun.builtin is not None:
+        return LOOKUP_OPS.get(lf_name(fun.builtin))
+    if fun.val is None or qual_name(fun.val) not in LOOKUPS:
         return None
     module, name = qual_name(fun.val)
     return name

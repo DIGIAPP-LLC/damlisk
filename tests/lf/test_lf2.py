@@ -11,6 +11,7 @@ from damlisk.lf.builtins import (
     compare_name,
     demangle,
     hash_name,
+    index_name,
     is_compare,
     is_int,
     is_numeric,
@@ -18,6 +19,7 @@ from damlisk.lf.builtins import (
     is_time,
     join_name,
     lf_name,
+    lookup_name,
     mentions_update,
     numeric_lit,
     order_name,
@@ -502,3 +504,33 @@ def test_trace_name(expr, expected):
 )
 def test_is_party(typ, expected):
     assert is_party(typ) is expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("DA.List", "$u0021$u0021"), "!!"),
+        (_val("DA.List", "head"), None),
+        (_val("Main", "$u0021$u0021"), None),
+        (lf.Expr(var="xs"), None),
+    ],
+    ids=["list-index", "other-list", "user-value", "var"],
+)
+def test_index_name(fun, expected):
+    assert index_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("DA.Map", "lookup"), "lookup"),
+        (_val("DA.TextMap", "member"), "member"),
+        (lf.Expr(builtin="GENMAP_LOOKUP"), "lookup"),
+        (_val("DA.Map", "insert"), None),
+        (lf.Expr(builtin="GENMAP_INSERT"), None),
+        (lf.Expr(var="m"), None),
+    ],
+    ids=["map-lookup", "textmap-member", "genmap-builtin", "map-insert", "genmap-insert", "var"],
+)
+def test_lookup_name(fun, expected):
+    assert lookup_name(fun) == expected
