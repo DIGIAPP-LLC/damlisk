@@ -2,6 +2,7 @@ import pytest
 from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.lf.flow import (
+    CLOCK,
     THIS,
     Assign,
     FieldFlow,
@@ -397,3 +398,57 @@ def test_assigned_merges_into_sinks():
     usage.add_sinks(Usage(assigned={Assign(ASSET, "owner", "to")}))
 
     assert usage.assigned == {Assign(ASSET, "owner", "to")}
+
+
+STD_LF = lf.ModuleRef(lf.PackageRef("std"), lf.DottedName(("DA", "Internal", "LF")))
+GET_TIME = lf.Expr(val=lf.ValName(STD_LF, ("getTime",)))
+
+
+def case(scrut):
+    return lf.Expr(case=lf.Case(scrut, []))
+
+
+CLOCK_VALUES = dict(
+    [
+        helper("check", lam(["msg", "b"], case(var("b")))),
+        helper("assertOpen", app(val("check"), var("msg"))),
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "expr,clock,expected",
+    [
+        (do_bind("now", GET_TIME, case(var("now"))), True, {CLOCK}),
+        (
+            do_bind("now", GET_TIME, case(app(EQUAL, var("now"), proj("this", "at")))),
+            True,
+            {CLOCK, THIS},
+        ),
+        (case(proj("arg", "flag")), True, {"flag"}),
+        (do_bind("now", GET_TIME, app(val("show"), var("now"))), True, set()),
+        (do_bind("now", GET_TIME, case(var("now"))), False, set()),
+        (app(val("assertOpen"), proj("arg", "ok")), True, {"ok"}),
+    ],
+    ids=[
+        "clock-case",
+        "clock-compare",
+        "argument-case",
+        "no-branch",
+        "clock-off",
+        "partial-helper",
+    ],
+)
+def test_branched(expr, clock, expected):
+    flow = FieldFlow(CLOCK_VALUES, clock=clock)
+
+    assert flow.branched(expr, "arg", "this") == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [(GET_TIME, True), (app(GET_TIME, var("dict")), True), (val("show"), False)],
+    ids=["value", "applied", "other"],
+)
+def test_reads_clock(expr, expected):
+    assert FieldFlow({}).reads_clock(expr) is expected

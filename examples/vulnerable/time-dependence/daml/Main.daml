@@ -1,0 +1,77 @@
+module Main where
+
+import DA.Time (isLedgerTimeLT)
+import DA.Assert (assertDeadlineExceeded)
+
+isOpen : Time -> Time -> Bool
+isOpen now closesAt = now < closesAt
+
+template Auction
+  with
+    seller : Party
+    bidder : Party
+    closesAt : Time
+    best : Decimal
+  where
+    signatory seller
+    observer bidder
+
+    choice Close : ()
+      controller seller
+      do
+        now <- getTime
+        if now >= closesAt then pure () else abort "still open"
+
+    choice Bid : ContractId Auction
+      with
+        price : Decimal
+      controller bidder
+      do
+        now <- getTime
+        assertMsg "closed" (now < closesAt)
+        create this with best = price
+
+    choice Settle : ()
+      controller seller
+      do
+        now <- getTime
+        if isOpen now closesAt then abort "open" else pure ()
+
+    choice Expire : ()
+      controller seller
+      do assertDeadlineExceeded "expire" closesAt
+
+    choice Withdraw : ()
+      controller seller
+      do
+        early <- isLedgerTimeLT closesAt
+        if early then abort "too early" else pure ()
+
+    nonconsuming choice Stamp : ContractId Log
+      controller seller
+      do
+        now <- getTime
+        create Log with seller; at = now
+
+    choice Reprice : ContractId Auction
+      with
+        price : Decimal
+      controller seller
+      do
+        assertMsg "too low" (price > best)
+        create this with best = price
+
+    choice Reschedule : ContractId Auction
+      with
+        newClose : Time
+      controller seller
+      do
+        assertMsg "earlier" (newClose > closesAt)
+        create this with closesAt = newClose
+
+template Log
+  with
+    seller : Party
+    at : Time
+  where
+    signatory seller

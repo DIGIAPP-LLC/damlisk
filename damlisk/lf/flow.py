@@ -3,11 +3,12 @@ from dataclasses import dataclass, field
 
 from dazl.damlast import daml_lf_1 as lf
 
-from damlisk.lf.builtins import compare_name, order_name, partial_name, untyped
+from damlisk.lf.builtins import compare_name, order_name, partial_name, time_name, untyped
 from damlisk.lf.tree import child_terms, find_all, used_later
 
 WHOLE = frozenset({"*"})
 THIS = "@this"
+CLOCK = "@now"
 Aliases = dict[str, frozenset[str]]
 Visited = frozenset[lf.ValName]
 Node = lf.Expr | lf.Update
@@ -40,6 +41,7 @@ class Usage:
     called: set[str] = field(default_factory=set)
     untrusted: set[str] = field(default_factory=set)
     assigned: set[Assign] = field(default_factory=set)
+    branched: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -58,6 +60,7 @@ class Usage:
         self.called |= other.called
         self.untrusted |= other.untrusted
         self.assigned |= other.assigned
+        self.branched |= other.branched
 
 
 def exercised(update: lf.Update) -> lf.Expr | None:
@@ -140,9 +143,13 @@ class Helper:
 
 
 class FieldFlow:
-    def __init__(self, values: dict[lf.ValName, lf.DefValue]) -> None:
-        """Remember all package values, so calls to compiler helpers can be followed."""
+    def __init__(self, values: dict[lf.ValName, lf.DefValue], clock: bool = False) -> None:
+        """Remember all package values, so calls to compiler helpers can be followed.
+
+        With `clock`, a variable bound to the ledger time carries the `CLOCK` field.
+        """
         self.values = values
+        self.clock = clock
 
     def fields(self, expr: lf.Expr, var: str) -> set[str]:
         """Return the fields of record variable `var` that `expr` uses."""
@@ -175,6 +182,10 @@ class FieldFlow:
     def iface_cids(self, expr: lf.Expr, var: str) -> set[str]:
         """Return the fields of `var` that `expr` exercises or fetches through an interface."""
         return self.trace(expr, {var: WHOLE}).untrusted
+
+    def branched(self, expr: lf.Expr, var: str, this: str) -> set[str]:
+        """Return the fields of `var` and `this` that decide a `case`, `if` or assertion."""
+        return self.trace(expr, {var: WHOLE, this: frozenset({THIS})}).branched
 
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
@@ -215,6 +226,10 @@ class FieldFlow:
             return self.trace_update(node.rec_upd, aliases, visited)
         if node.rec_con is not None:
             return self.trace_record(node.rec_con, aliases, visited)
+        if node.case is not None:
+            usage = self.trace_children(node, aliases, visited)
+            usage.branched |= self.trace(node.case.scrut, aliases, visited).fields
+            return usage
         return self.trace_children(node, aliases, visited)
 
     def trace_children(self, node: Node, aliases: Aliases, visited: Visited) -> Usage:
@@ -262,7 +277,7 @@ class FieldFlow:
         ledger state rather than caller input, so it is not aliased. The one exception is
         `c <- fetch cid` on a tracked contract id that is read later: `c` becomes an alias of
         the id's fields, so checks on `c` count as checks on the id, and the id is recorded
-        as fetched.
+        as fetched. With `clock`, `now <- getTime` makes `now` carry the `CLOCK` field.
         """
         usage = Usage()
         scope = dict(aliases)
@@ -270,6 +285,9 @@ class FieldFlow:
             bound = self.trace(binding.bound, scope, visited)
             usage.merge(bound)
             name = binding.binder.var
+            if self.clock and not pure and self.reads_clock(binding.bound):
+                scope[name] = frozenset({CLOCK})
+                continue
             if not bound.fields:
                 continue
             if pure:
@@ -282,6 +300,11 @@ class FieldFlow:
 
     def trace_call(self, call: lf.Expr.App, aliases: Aliases, visited: Visited) -> Usage:
         """Handle a function call: record sinks, then follow the call into package helpers."""
+        helper = self.helper(call.fun, visited)
+        if helper is not None and helper.body.app is not None:
+            body = helper.body.app
+            full = lf.Expr.App(body.fun, list(body.args) + list(call.args))
+            return self.trace_call(full, aliases, helper.visited(visited))
         args = [self.trace(arg, aliases, visited) for arg in call.args]
         usage = Usage()
         comparison = self.resolve(call.fun, compare_name)
@@ -351,6 +374,15 @@ class FieldFlow:
         if helper is None or peel(helper.body).update is None:
             return None
         return helper
+
+    def reads_clock(self, expr: lf.Expr) -> bool:
+        """Return True if `expr` reads the ledger time: `getTime`, `isLedgerTimeLT` and alike."""
+        if expr.update is not None:
+            upd = expr.update
+            return upd.get_time is not None or upd.ledger_time_lt is not None
+        if expr.app is not None:
+            expr = expr.app.fun
+        return self.resolve(expr, time_name) is not None
 
     def fetches(self, expr: lf.Expr) -> bool:
         """Return True if `expr` is `fetch cid`, written inline or as a call to a fetch helper.

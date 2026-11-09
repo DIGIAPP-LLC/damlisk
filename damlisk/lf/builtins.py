@@ -296,6 +296,15 @@ def text_lit(expr: lf.Expr) -> str | None:
     return expr.prim_lit.text
 
 
+def time_name(fun: lf.Expr) -> str | None:
+    """Return the name of the library action `fun` if it reads the ledger time, or None."""
+    fun = untyped(fun)
+    if fun.val is None or not reads_time(fun.val):
+        return None
+    module, name = qual_name(fun.val)
+    return name
+
+
 def clock_name(fun: lf.Expr) -> str | None:
     """Return `getTime` if `fun` is the library action that reads the ledger time, or None."""
     fun = untyped(fun)

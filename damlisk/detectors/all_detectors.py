@@ -16,6 +16,7 @@ from damlisk.detectors.hygiene.discarded_update import DiscardedUpdate
 from damlisk.detectors.hygiene.rtlo import Rtlo
 from damlisk.detectors.hygiene.tautological_compare import TautologicalCompare
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
+from damlisk.detectors.time.time_dependence import TimeDependence
 from damlisk.detectors.upgrade.sdk_version import SdkVersion
 from damlisk.detectors.validation.amount_tolerance import AmountTolerance
 from damlisk.detectors.validation.divide_multiply import DivideBeforeMultiply
@@ -59,4 +60,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     DelegatedLeak,
     UntrustedInterface,
     ArbitraryParty,
+    TimeDependence,
 )

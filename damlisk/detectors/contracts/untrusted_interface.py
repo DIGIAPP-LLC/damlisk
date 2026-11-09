@@ -1,17 +1,35 @@
+from dazl.damlast import daml_lf_1 as lf
+
 from damlisk.detectors.abstract_detector import AbstractDetector
-from damlisk.lf.builtins import cid_template
+from damlisk.lf.builtins import type_args
 from damlisk.lf.flow import WHOLE, FieldFlow
 from damlisk.lf.index import ChoiceDecl, PackageIndex
 from damlisk.output.finding import Confidence, Finding, Impact
 
 
-def template_cids(index: PackageIndex, decl: ChoiceDecl) -> set[str]:
-    """Return the argument fields declared as the contract id of a concrete template."""
+def only_templates(index: PackageIndex, typ: lf.Type, seen: set[lf.TypeConName]) -> bool:
+    """Return True if every contract id inside `typ` names a template, searching records."""
+    prim = typ.prim
+    if prim is not None and prim.prim == lf.PrimType.CONTRACT_ID and prim.args:
+        inner = prim.args[0]
+        return inner.con is not None and inner.con.tycon in index.templates
+    nested = type_args(typ)
+    if typ.con is not None and typ.con.tycon not in seen:
+        seen.add(typ.con.tycon)
+        fields = index.records.get(typ.con.tycon, ())
+        nested.extend(field.type for field in fields)
+    for arg in nested:
+        if not only_templates(index, arg, seen):
+            return False
+    return True
+
+
+def concrete_fields(index: PackageIndex, decl: ChoiceDecl) -> set[str]:
+    """Return the argument fields that hold no interface contract id, also inside records."""
     names = set()
     fields = index.arg_fields(decl)
     for field in fields:
-        tycon = cid_template(field.type)
-        if tycon is not None and tycon in index.templates:
+        if only_templates(index, field.type, set()):
             names.add(field.field)
     return names
 
@@ -63,7 +81,7 @@ class UntrustedInterface(AbstractDetector):
         findings = []
         decls = self.index.choices()
         for decl in decls:
-            concrete = template_cids(self.index, decl)
+            concrete = concrete_fields(self.index, decl)
             fields = untrusted_cids(flow, decl, signers.get(decl.parent, set()), concrete)
             if fields:
                 names = ", ".join(f"`{name}`" for name in fields)

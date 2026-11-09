@@ -1,8 +1,10 @@
 import pytest
+from dazl.damlast import daml_lf_1 as lf
 
 from damlisk.detectors.contracts.untrusted_interface import (
     UntrustedInterface,
-    template_cids,
+    concrete_fields,
+    only_templates,
     untrusted_cids,
 )
 from damlisk.lf.dar import Dar
@@ -51,15 +53,53 @@ def test_untrusted_cids(iface_index, choice, signers, concrete, expected):
 @pytest.mark.parametrize(
     "choice,expected",
     [
-        ("Desk.PayCash", {"cashCid"}),
-        ("Desk.SendCash", {"cashCid"}),
-        ("Desk.Settle", set()),
-        ("Desk.SettleAll", set()),
+        ("Desk.PayCash", {"cashCid", "receiver"}),
+        ("Desk.SendCash", {"cashCid", "receiver"}),
+        ("Desk.Settle", {"receiver"}),
+        ("Desk.SettleAll", {"receiver"}),
     ],
     ids=["template-id", "cast-template-id", "interface-id", "interface-list"],
 )
-def test_template_cids(iface_index, choice, expected):
-    assert template_cids(iface_index, decl_of(iface_index, choice)) == expected
+def test_concrete_fields(iface_index, choice, expected):
+    assert concrete_fields(iface_index, decl_of(iface_index, choice)) == expected
+
+
+def by_name(names, name):
+    return next(tycon for tycon in names if str(tycon).endswith(f":{name}"))
+
+
+def cid_of(tycon):
+    con = lf.Type(con=lf.Type.Con(tycon, ()))
+    return lf.Type(prim=lf.Type.Prim(lf.PrimType.CONTRACT_ID, (con,)))
+
+
+def list_of(typ):
+    return lf.Type(prim=lf.Type.Prim(lf.PrimType.LIST, (typ,)))
+
+
+@pytest.mark.parametrize(
+    "kind,expected",
+    [
+        ("template", True),
+        ("template-list", True),
+        ("interface", False),
+        ("interface-list", False),
+        ("text", True),
+    ],
+    ids=["template", "template-list", "interface", "interface-list", "no-contract-id"],
+)
+def test_only_templates(iface_index, kind, expected):
+    cash = cid_of(by_name(iface_index.templates, "Cash"))
+    holding = cid_of(by_name(iface_index.ifaces, "Holding"))
+    types = {
+        "template": cash,
+        "template-list": list_of(cash),
+        "interface": holding,
+        "interface-list": list_of(holding),
+        "text": lf.Type(prim=lf.Type.Prim(lf.PrimType.TEXT, ())),
+    }
+
+    assert only_templates(iface_index, types[kind], set()) is expected
 
 
 def test_detector_reports_example_violations(iface_index):

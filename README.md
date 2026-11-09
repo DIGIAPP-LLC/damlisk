@@ -47,6 +47,7 @@ damlisk list-detectors
 | [`delegated-authority-leak`](#delegated-authority-leak) | High | Medium | Non-signatory controller passes parties or amounts into a create or exercise |
 | [`untrusted-interface-exercise`](#untrusted-interface-exercise) | High | Medium | Interface contract id from the choice argument is exercised or fetched |
 | [`value-to-arbitrary-party`](#value-to-arbitrary-party) | High | Medium | Asset created for an owner from the choice argument by a non-owner controller |
+| [`time-dependence`](#time-dependence) | Low | Medium | Ledger time decides a branch |
 
 ### boolean-cst
 
@@ -1628,15 +1629,18 @@ reported. `Pool.Drain` is reported because `bank` also signs the pool.
 
 **How it works:** the detector traces the choice argument through the choice body, following
 package helpers and callbacks such as `forA_`, and collects the fields that reach an interface
-exercise or an interface fetch. Fields declared as `ContractId T` or `[ContractId T]` for a
-template `T` are dropped. The declared type is not enforced on a contract id, so a choice that
+exercise or an interface fetch. Fields whose contract ids all name templates, such as
+`ContractId T`, `[ContractId T]` or a record of such ids, are dropped. Variants are not
+searched, so an interface id inside a variant field is dropped too. The declared type is not enforced on a contract id, so a choice that
 casts such a field to an interface without fetching it first is not reported. Interface
 choices and interface method implementations are not checked. Checks on the view are not
 counted, because the implementation controls the view.
 
 **Results on real code:** the Splice packages have no finding. `splice-amulet` 0.1.24 casts
 `externalPartyConfigState0Cid` to an interface in `Amulet_ExpireV2`, but declares it as a
-template id and fetches it first. The token-standard API packages exercise interfaces from
+template id and fetches it first. `AmuletRules_CreateTransferPreapproval` and two other
+choices cast `context.amuletRules` to an interface the same way; `context` is a record that
+holds only template ids. The token-standard API packages exercise interfaces from
 their own choices, which the check skips. Splice documents the same risk on `expectedAdmin` in
 `TransferFactory_Transfer`: exercising a factory from an untrusted source is safe only
 "provided all vetted Daml packages only contain interface implementations that check the
@@ -1721,3 +1725,66 @@ the signatory `dso`. `AmuletRules_Transfer`, `AmuletRules_BuyMemberTraffic` and
 
 **Recommendation:** make the current owner or a signatory the controller, or check the new
 owner against parties stored on the contract.
+
+### time-dependence
+
+**Ledger time decides a branch.** It reports a choice that reads the ledger time (`getTime`,
+`isLedgerTimeLT`, `assertWithinDeadline`, `assertDeadlineExceeded`, ...) and lets it decide an
+`if`, a `case` or an assertion.
+
+**Impact:** the submitting participant picks the ledger time within the allowed skew. For a
+transaction close to a deadline, the submitter decides which side of the deadline it lands on.
+The check marks where that matters; most such branches are intended, which is why it is rated
+Low.
+
+**Example** (`examples/vulnerable/time-dependence/daml/Main.daml`):
+
+```haskell
+    choice Bid : ContractId Auction
+      with
+        price : Decimal
+      controller bidder
+      do
+        now <- getTime
+        assertMsg "closed" (now < closesAt)
+        create this with best = price
+
+    nonconsuming choice Stamp : ContractId Log
+      controller seller
+      do
+        now <- getTime
+        create Log with seller; at = now
+```
+
+```text
+$ damlisk scan examples/vulnerable/time-dependence/time-dependence.dar --detect time-dependence
+[Low] time-dependence Main.daml:25
+    Main:Auction.Bid: ledger time decides a branch
+[Low] time-dependence Main.daml:19
+    Main:Auction.Close: ledger time decides a branch
+[Low] time-dependence Main.daml:40
+    Main:Auction.Expire: ledger time decides a branch
+[Low] time-dependence Main.daml:34
+    Main:Auction.Settle: ledger time decides a branch
+[Low] time-dependence Main.daml:44
+    Main:Auction.Withdraw: ledger time decides a branch
+5 finding(s).
+```
+
+`Stamp` (the time is only stored), `Reprice` (no time) and `Reschedule` (a `Time` from the
+argument, which [`time-from-argument`](#time-from-argument) covers) are not reported.
+
+**How it works:** a variable bound to `getTime` or to a ledger-time test such as
+`isLedgerTimeLT` carries the ledger time. The detector follows it through `let`, package
+helpers and library functions such as `assertMsg` and `assertDeadlineExceeded`, and reports
+the choice when it reaches the condition of a `case`. Time that flows into an amount, and the
+size of the skew window, are not checked. A helper that reads the time but receives no
+argument from the choice is not followed.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 29 findings and `splice-wallet-payments`
+0.1.24 has 5. Each is an expiry or deadline check, for example `TransferPreapproval_Send` and
+`ValidatorLicense_UpdateMetadata`, which allows a metadata update only after a minimum
+interval.
+
+**Recommendation:** keep time windows much longer than the skew, accept that a deadline is
+fuzzy by the skew, and never rely on ledger time for ordering or exact instants.
