@@ -49,6 +49,7 @@ damlisk list-detectors
 | [`value-to-arbitrary-party`](#value-to-arbitrary-party) | High | Medium | Asset created for an owner from the choice argument by a non-owner controller |
 | [`time-dependence`](#time-dependence) | Low | Medium | Ledger time decides a branch |
 | [`weak-randomness`](#weak-randomness) | High | Medium | Ledger time or a hash picks a list element or map entry |
+| [`ledger-op-in-loop`](#ledger-op-in-loop) | Low | Medium | Create, exercise or fetch inside a loop |
 
 ### boolean-cst
 
@@ -1852,3 +1853,60 @@ selecting, such as a `case` on `seed % n` or sorting by a hash, are not checked.
 
 **Recommendation:** do not derive randomness on the ledger. Use a commit-reveal scheme
 between the parties or an external randomness source whose result is signed and verified.
+
+### ledger-op-in-loop
+
+**Create, exercise or fetch inside a loop.** It reports a choice that runs `create`,
+`exercise` (including `archive`) or `fetch` inside the closure of `forA`, `forA_`, `mapA`,
+`mapA_`, `forM`, `mapM`, `foldl`, `foldr`, `foldlA` or `foldrA`.
+
+**Impact:** every iteration adds nodes to the transaction, so a long list can exceed
+transaction limits. All iterations commit or abort together: one failing iteration, such as
+an archived contract or a failed check, blocks the rest.
+
+**Example** (`examples/vulnerable/ledger-op-in-loop/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice PayAll : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
+    nonconsuming choice Total : Decimal
+      with
+        amounts : [Decimal]
+      controller owner
+      do pure (foldl (+) 0.0 amounts)
+```
+
+```text
+$ damlisk scan examples/vulnerable/ledger-op-in-loop/ledger-op-in-loop.dar --detect ledger-op-in-loop
+[Low] ledger-op-in-loop Main.daml:47
+    Main:Treasury.ArchiveAll: exercise inside a loop
+[Low] ledger-op-in-loop Main.daml:35
+    Main:Treasury.MintAll: create inside a loop
+[Low] ledger-op-in-loop Main.daml:41
+    Main:Treasury.MintByHelper: create inside a loop
+[Low] ledger-op-in-loop Main.daml:29
+    Main:Treasury.PayAll: exercise inside a loop
+[Low] ledger-op-in-loop Main.daml:53
+    Main:Treasury.ReadAll: fetch inside a loop
+5 finding(s).
+```
+
+`Total` (a pure fold), `MintOne` (no loop) and `Label` (a pure `map`) are not reported.
+
+**How it works:** the detector looks for calls of the loops above, in the choice body and in
+the package helpers it calls, and searches every argument of the loop for ledger operations.
+It follows lambdas and package helpers, so `forA_ cids archive` and `mapA (mint owner) names`
+count. The size of the list is not considered; a loop over a fixed template field is
+reported the same as one over a choice argument (that case is
+`unbounded-input-loop`).
+
+**Results on real code:** `splice-amulet` 0.1.24 has 20 findings, 0.1.19 has 19 and 0.1.14
+has 9. They are intended batches, for example `AmuletRules_ClaimExpiredRewards` expiring a
+list of reward coupons and `AmuletRules_Transfer` consuming the transfer inputs.
+
+**Recommendation:** bound the number of iterations, or split the work into one choice per
+item so a single failure only affects that item.

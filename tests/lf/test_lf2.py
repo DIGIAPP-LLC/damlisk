@@ -20,6 +20,7 @@ from damlisk.lf.builtins import (
     join_name,
     lf_name,
     lookup_name,
+    loop_name,
     mentions_update,
     numeric_lit,
     order_name,
@@ -534,3 +535,19 @@ def test_index_name(fun, expected):
 )
 def test_lookup_name(fun, expected):
     assert lookup_name(fun) == expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("DA.Foldable", "forA_"), "forA_"),
+        (_val("DA.Internal.Prelude", "mapA"), "mapA"),
+        (_val("DA.Internal.Prelude", "foldl"), "foldl"),
+        (_val("Main", "forA"), None),
+        (_val("GHC.Base", "map"), None),
+        (lf.Expr(var="f"), None),
+    ],
+    ids=["for-a", "map-a", "fold", "user-value", "pure-map", "var"],
+)
+def test_loop_name(fun, expected):
+    assert loop_name(fun) == expected

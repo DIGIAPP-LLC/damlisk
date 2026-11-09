@@ -50,6 +50,21 @@ LOOKUPS = {
     ("DA.TextMap", "member"),
     ("DA.TextMap", "findWithDefault"),
 }
+LOOPS = {
+    "forA",
+    "forA_",
+    "mapA",
+    "mapA_",
+    "forM",
+    "forM_",
+    "mapM",
+    "mapM_",
+    "foldl",
+    "foldr",
+    "foldlA",
+    "foldrA",
+}
+STD_PREFIX = ("DA.", "GHC.")
 LOOKUP_OPS = {"GENMAP_LOOKUP": "lookup", "TEXTMAP_LOOKUP": "lookup"}
 MEMBERSHIP = {
     ("DA.Internal.Prelude", "elem"),
@@ -332,6 +347,17 @@ def lookup_name(fun: lf.Expr) -> str | None:
         return None
     module, name = qual_name(fun.val)
     return name
+
+
+def loop_name(fun: lf.Expr) -> str | None:
+    """Return the name of the standard library loop `fun` refers to (`forA`, `foldl`, ...)."""
+    fun = untyped(fun)
+    if fun.val is None:
+        return None
+    module, name = qual_name(fun.val)
+    if name in LOOPS and module.startswith(STD_PREFIX):
+        return name
+    return None
 
 
 def clock_name(fun: lf.Expr) -> str | None:

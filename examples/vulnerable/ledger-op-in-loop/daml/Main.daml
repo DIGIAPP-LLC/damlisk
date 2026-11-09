@@ -1,0 +1,84 @@
+module Main where
+
+import DA.Foldable (forA_)
+
+mint : Party -> Text -> Update (ContractId Item)
+mint owner name = create Item with owner; name
+
+template Cash
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+
+    nonconsuming choice Pay : ()
+      with
+        to : Party
+        amt : Decimal
+      controller owner
+      do pure ()
+
+template Treasury
+  with
+    owner : Party
+    cashCid : ContractId Cash
+  where
+    signatory owner
+
+    nonconsuming choice PayAll : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
+    nonconsuming choice MintAll : [ContractId Item]
+      with
+        names : [Text]
+      controller owner
+      do forA names \n -> create Item with owner; name = n
+
+    nonconsuming choice MintByHelper : [ContractId Item]
+      with
+        names : [Text]
+      controller owner
+      do mapA (mint owner) names
+
+    nonconsuming choice ArchiveAll : ()
+      with
+        cids : [ContractId Item]
+      controller owner
+      do forA_ cids archive
+
+    nonconsuming choice ReadAll : Decimal
+      with
+        cids : [ContractId Cash]
+      controller owner
+      do
+        cashes <- mapA fetch cids
+        pure (foldl (\acc c -> acc + c.amount) 0.0 cashes)
+
+    nonconsuming choice Total : Decimal
+      with
+        amounts : [Decimal]
+      controller owner
+      do pure (foldl (+) 0.0 amounts)
+
+    nonconsuming choice MintOne : ContractId Item
+      with
+        name : Text
+      controller owner
+      do create Item with owner; name
+
+    nonconsuming choice Label : [Text]
+      with
+        names : [Text]
+      controller owner
+      do pure (map (\n -> n <> "!") names)
+
+template Item
+  with
+    owner : Party
+    name : Text
+  where
+    signatory owner

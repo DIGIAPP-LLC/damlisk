@@ -19,6 +19,7 @@ EXCLUDED = ",".join(
         "stuck-asset",
         "delegated-authority-leak",
         "time-dependence",
+        "ledger-op-in-loop",
     ]
 )
 
@@ -35,7 +36,7 @@ EXCLUDED = ",".join(
             "No findings.",
         ),
         (["scan", str(BOOL_DAR), "--detect", "nope"], 2, "unknown detector(s): nope"),
-        (["scan", str(AMULET_DAR)], 0, "86 finding(s)."),
+        (["scan", str(AMULET_DAR)], 0, "106 finding(s)."),
         (["scan", str(AMULET_DAR), "--exclude", EXCLUDED], 0, "No findings."),
         (["info", str(AMULET_DAR)], 0, "interface instances: 23"),
         (["list-detectors"], 0, "boolean-cst"),
