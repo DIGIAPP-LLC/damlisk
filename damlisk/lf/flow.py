@@ -8,6 +8,7 @@ from damlisk.lf.builtins import (
     hash_name,
     index_name,
     lookup_name,
+    loop_name,
     order_name,
     partial_name,
     time_name,
@@ -54,6 +55,7 @@ class Usage:
     branched: set[str] = field(default_factory=set)
     indexed: set[str] = field(default_factory=set)
     keyed: set[str] = field(default_factory=set)
+    looped: set[str] = field(default_factory=set)
 
     def merge(self, other: "Usage") -> None:
         """Add everything `other` uses: fields, compared fields and partial-function uses."""
@@ -75,6 +77,7 @@ class Usage:
         self.branched |= other.branched
         self.indexed |= other.indexed
         self.keyed |= other.keyed
+        self.looped |= other.looped
 
 
 def exercised(update: lf.Update) -> lf.Expr | None:
@@ -136,6 +139,18 @@ def linked_fields(args: list[Usage]) -> set[str]:
     if len(mixed) < 2:
         return set()
     return mixed - {THIS}
+
+
+def loop_source(loop: str, args: list[Usage]) -> set[str]:
+    """Return the fields of the list a loop runs over.
+
+    `forA xs f` and `forM_ xs f` take the list before the callback; `mapA f xs`,
+    `foldl f z xs` and the other loops take it last.
+    """
+    pos = -2 if loop.startswith("for") else -1
+    if len(args) < -pos:
+        return set()
+    return set(args[pos].fields)
 
 
 @dataclass(frozen=True)
@@ -211,6 +226,14 @@ class FieldFlow:
         `indexed` holds the fields that reach `!!`; `keyed` those that reach a map lookup.
         """
         return self.trace(expr, {var: WHOLE, this: frozenset({THIS})})
+
+    def loops(self, expr: lf.Expr, var: str) -> Usage:
+        """Trace choice argument `var` through `expr` for the lists that loops run over.
+
+        `looped` holds the fields that are the source of a `forA`, `mapA` or fold;
+        `ordered` holds those that reach `<`, `<=`, `>` or `>=`, such as `length xs <= 50`.
+        """
+        return self.trace(expr, {var: WHOLE})
 
     def fetch_usage(self, expr: lf.Expr, var: str, this: str) -> Usage:
         """Trace choice argument `var` and contract `this` through `expr`.
@@ -337,6 +360,7 @@ class FieldFlow:
         ordering = self.resolve(call.fun, order_name)
         index = self.resolve(call.fun, index_name)
         lookup = self.resolve(call.fun, lookup_name)
+        loop = self.resolve(call.fun, loop_name)
         for arg in args:
             usage.add_sinks(arg)
             if comparison is not None:
@@ -349,6 +373,8 @@ class FieldFlow:
                 usage.indexed |= arg.fields
             if lookup is not None:
                 usage.keyed |= arg.fields
+        if loop is not None:
+            usage.looped |= loop_source(loop, args)
         if comparison is not None:
             usage.linked |= linked_fields(args)
         usage.merge(self.trace_callbacks(call, args, aliases, visited))

@@ -13,6 +13,7 @@ from damlisk.lf.flow import (
     exercised,
     iface_cid,
     linked_fields,
+    loop_source,
     peel,
 )
 
@@ -506,3 +507,49 @@ def test_hash_source(hashes, expected):
     flow = FieldFlow({}, hashes=hashes)
 
     assert flow.fields(app(SHA256, lf.Expr(prim_lit=lf.PrimLit(text="x"))), "arg") == expected
+
+
+STD_PRELUDE = lf.ModuleRef(lf.PackageRef("std"), lf.DottedName(("DA", "Internal", "Prelude")))
+STD_FOLD = lf.ModuleRef(lf.PackageRef("std"), lf.DottedName(("DA", "Foldable")))
+FOR_ALL = lf.Expr(val=lf.ValName(STD_FOLD, ("forA_",)))
+FOLD = lf.Expr(val=lf.ValName(STD_PRELUDE, ("foldl",)))
+LENGTH = lf.Expr(val=lf.ValName(STD_FOLD, ("length",)))
+BODY = lam(["x"], var("x"))
+
+
+@pytest.mark.parametrize(
+    "loop,args,expected",
+    [
+        ("forA_", [Usage(fields={"xs"}), Usage(fields={"f"})], {"xs"}),
+        ("foldl", [Usage(), Usage(fields={"z"}), Usage(fields={"xs"})], {"xs"}),
+        ("mapA", [Usage(fields={"f"}), Usage(fields={"xs"})], {"xs"}),
+        ("forA", [Usage(fields={"f"})], set()),
+    ],
+    ids=["for-list-first", "fold-list-last", "map-list-last", "too-few-args"],
+)
+def test_loop_source(loop, args, expected):
+    assert loop_source(loop, args) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,looped,ordered",
+    [
+        (app(FOR_ALL, proj("arg", "xs"), BODY), {"xs"}, set()),
+        (app(FOLD, BODY, proj("arg", "z"), proj("arg", "xs")), {"xs"}, set()),
+        (
+            let(
+                "n",
+                app(GE, app(LENGTH, proj("arg", "xs")), var("cap")),
+                app(FOR_ALL, proj("arg", "xs"), BODY),
+            ),
+            {"xs"},
+            {"xs"},
+        ),
+        (app(val("show"), proj("arg", "xs")), set(), set()),
+    ],
+    ids=["for-loop", "fold-loop", "length-guard", "no-loop"],
+)
+def test_loops(expr, looped, ordered):
+    usage = FieldFlow({}).loops(expr, "arg")
+
+    assert (usage.looped, usage.ordered) == (looped, ordered)

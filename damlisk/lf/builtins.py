@@ -108,6 +108,16 @@ def is_int(typ: lf.Type) -> bool:
     return typ.prim is not None and typ.prim.prim == lf.PrimType.INT64
 
 
+def is_list(typ: lf.Type) -> bool:
+    """Return True if `typ` is a list `[a]` or an optional list `Optional [a]`."""
+    prim = typ.prim
+    if prim is None:
+        return False
+    if prim.prim == lf.PrimType.OPTIONAL and prim.args:
+        return is_list(prim.args[0])
+    return prim.prim == lf.PrimType.LIST
+
+
 def is_party(typ: lf.Type) -> bool:
     """Return True if `typ` is `Party`."""
     return typ.prim is not None and typ.prim.prim == lf.PrimType.PARTY

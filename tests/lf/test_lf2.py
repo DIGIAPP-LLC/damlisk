@@ -14,6 +14,7 @@ from damlisk.lf.builtins import (
     index_name,
     is_compare,
     is_int,
+    is_list,
     is_numeric,
     is_party,
     is_time,
@@ -551,3 +552,21 @@ def test_lookup_name(fun, expected):
 )
 def test_loop_name(fun, expected):
     assert loop_name(fun) == expected
+
+
+def _prim(prim, *args):
+    return lf.Type(prim=lf.Type.Prim(prim, args))
+
+
+@pytest.mark.parametrize(
+    "typ,expected",
+    [
+        (_prim(lf.PrimType.LIST, _prim(lf.PrimType.PARTY)), True),
+        (_prim(lf.PrimType.OPTIONAL, _prim(lf.PrimType.LIST, _prim(lf.PrimType.PARTY))), True),
+        (_prim(lf.PrimType.OPTIONAL, _prim(lf.PrimType.PARTY)), False),
+        (_prim(lf.PrimType.TEXT), False),
+    ],
+    ids=["list", "optional-list", "optional-party", "text"],
+)
+def test_is_list(typ, expected):
+    assert is_list(typ) is expected

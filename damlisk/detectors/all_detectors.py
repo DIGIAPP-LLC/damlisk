@@ -17,6 +17,7 @@ from damlisk.detectors.hygiene.rtlo import Rtlo
 from damlisk.detectors.hygiene.tautological_compare import TautologicalCompare
 from damlisk.detectors.hygiene.unused_field import UnusedTemplateField
 from damlisk.detectors.loops.ledger_op_in_loop import LedgerOpInLoop
+from damlisk.detectors.loops.unbounded_input_loop import UnboundedInputLoop
 from damlisk.detectors.time.time_dependence import TimeDependence
 from damlisk.detectors.time.weak_randomness import WeakRandomness
 from damlisk.detectors.upgrade.sdk_version import SdkVersion
@@ -65,4 +66,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     TimeDependence,
     WeakRandomness,
     LedgerOpInLoop,
+    UnboundedInputLoop,
 )

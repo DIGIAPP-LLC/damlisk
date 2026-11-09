@@ -1,0 +1,73 @@
+module Main where
+
+import DA.Foldable (forA_)
+
+payEach : ContractId Cash -> [(Party, Decimal)] -> Update ()
+payEach cashCid payees = forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
+template Cash
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+
+    nonconsuming choice Pay : ()
+      with
+        to : Party
+        amt : Decimal
+      controller owner
+      do pure ()
+
+template Treasury
+  with
+    owner : Party
+    cashCid : ContractId Cash
+    members : [Party]
+  where
+    signatory owner
+
+    nonconsuming choice PayAll : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
+    nonconsuming choice PayByHelper : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do payEach cashCid payees
+
+    nonconsuming choice MintAll : [ContractId Item]
+      with
+        names : [Text]
+      controller owner
+      do mapA (\n -> create Item with owner; name = n) names
+
+    nonconsuming choice PayCapped : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do
+        assertMsg "too many payees" (length payees <= 50)
+        forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
+    nonconsuming choice PayMembers : ()
+      with
+        amt : Decimal
+      controller owner
+      do forA_ members \p -> exercise cashCid Pay with to = p; amt
+
+    nonconsuming choice Total : Decimal
+      with
+        amounts : [Decimal]
+      controller owner
+      do pure (foldl (+) 0.0 amounts)
+
+template Item
+  with
+    owner : Party
+    name : Text
+  where
+    signatory owner

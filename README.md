@@ -50,6 +50,7 @@ damlisk list-detectors
 | [`time-dependence`](#time-dependence) | Low | Medium | Ledger time decides a branch |
 | [`weak-randomness`](#weak-randomness) | High | Medium | Ledger time or a hash picks a list element or map entry |
 | [`ledger-op-in-loop`](#ledger-op-in-loop) | Low | Medium | Create, exercise or fetch inside a loop |
+| [`unbounded-input-loop`](#unbounded-input-loop) | Medium | Medium | Loop over a list from the choice argument with no length check |
 
 ### boolean-cst
 
@@ -1910,3 +1911,64 @@ list of reward coupons and `AmuletRules_Transfer` consuming the transfer inputs.
 
 **Recommendation:** bound the number of iterations, or split the work into one choice per
 item so a single failure only affects that item.
+
+### unbounded-input-loop
+
+**Loop over a list from the choice argument with no length check.** It reports a choice
+that runs `forA`, `mapA`, `foldl` or another loop from [`ledger-op-in-loop`](#ledger-op-in-loop)
+over a list field of its argument, when nothing compares a value computed from that list with
+`<`, `<=`, `>` or `>=`.
+
+**Impact:** the submitter decides how many iterations run. A long list makes the transaction
+too large to commit, or creates that many contracts under the signatories' authority.
+
+**Example** (`examples/vulnerable/unbounded-input-loop/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice PayAll : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
+    nonconsuming choice PayCapped : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do
+        assertMsg "too many payees" (length payees <= 50)
+        forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+```
+
+```text
+$ damlisk scan examples/vulnerable/unbounded-input-loop/unbounded-input-loop.dar --detect unbounded-input-loop
+[Medium] unbounded-input-loop Main.daml:42
+    Main:Treasury.MintAll: loop over argument `names` with no length check
+[Medium] unbounded-input-loop Main.daml:30
+    Main:Treasury.PayAll: loop over argument `payees` with no length check
+[Medium] unbounded-input-loop Main.daml:36
+    Main:Treasury.PayByHelper: loop over argument `payees` with no length check
+[Medium] unbounded-input-loop Main.daml:62
+    Main:Treasury.Total: loop over argument `amounts` with no length check
+4 finding(s).
+```
+
+`PayCapped` (the length is checked) and `PayMembers` (the list is a template field) are not
+reported. `Total` is a pure `foldl` and is reported, because the rule covers every fold over
+an argument list.
+
+**How it works:** the detector follows the argument fields through `let`, package helpers and
+library calls to the list a loop runs over: the list before the callback for `forA` and
+`forM`, the last argument for `mapA` and the folds. Only fields of type `[a]` or
+`Optional [a]` count. Any ordering comparison on a value computed from the list counts as a
+length check, so a list whose `length` only feeds a calculation that is later compared is
+not reported. Lists nested inside a record of the argument, such as `transfer.inputs`, are
+not followed.
+
+**Results on real code:** `splice-amulet` 0.1.24 has 10 findings, 0.1.19 has 9 and 0.1.14 has
+3; all are DSO choices that process a list of coupons or contracts passed by the DSO
+automation, for example `AmuletRules_ClaimExpiredRewards` and
+`AmuletRules_MergeMemberTrafficContracts`.
+
+**Recommendation:** check the length first, for example
+`assertMsg "too many" (length payees <= 50)`, or split the work into several transactions.
