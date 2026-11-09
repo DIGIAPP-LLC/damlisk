@@ -37,6 +37,7 @@ IFACE_DAR = (
     / "untrusted-interface-exercise.dar"
 )
 DEPEND_DAR = ROOT / "examples" / "vulnerable" / "time-dependence" / "time-dependence.dar"
+STALE_DAR = ROOT / "examples" / "vulnerable" / "stale-fetch" / "stale-fetch.dar"
 UNBOUNDED_DAR = (
     ROOT / "examples" / "vulnerable" / "unbounded-input-loop" / "unbounded-input-loop.dar"
 )
@@ -211,6 +212,11 @@ def loop_index() -> PackageIndex:
 @pytest.fixture(scope="session")
 def unbounded_index() -> PackageIndex:
     return PackageIndex(Dar.load(UNBOUNDED_DAR))
+
+
+@pytest.fixture(scope="session")
+def stale_index() -> PackageIndex:
+    return PackageIndex(Dar.load(STALE_DAR))
 
 
 @pytest.fixture(scope="session")

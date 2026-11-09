@@ -6,6 +6,7 @@ from damlisk.detectors.authorization.delegated_leak import DelegatedLeak
 from damlisk.detectors.authorization.hardcoded_party import HardcodedParty
 from damlisk.detectors.authorization.over_disclosure import OverDisclosure
 from damlisk.detectors.authorization.unprotected_archive import UnprotectedArchive
+from damlisk.detectors.contracts.stale_fetch import StaleFetch
 from damlisk.detectors.contracts.unsafe_primitive import UnsafePrimitive
 from damlisk.detectors.contracts.untrusted_interface import UntrustedInterface
 from damlisk.detectors.hygiene.aborting_choice import AbortingChoice
@@ -67,4 +68,5 @@ DETECTORS: tuple[type[AbstractDetector], ...] = (
     WeakRandomness,
     LedgerOpInLoop,
     UnboundedInputLoop,
+    StaleFetch,
 )

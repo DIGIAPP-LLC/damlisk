@@ -51,6 +51,7 @@ damlisk list-detectors
 | [`weak-randomness`](#weak-randomness) | High | Medium | Ledger time or a hash picks a list element or map entry |
 | [`ledger-op-in-loop`](#ledger-op-in-loop) | Low | Medium | Create, exercise or fetch inside a loop |
 | [`unbounded-input-loop`](#unbounded-input-loop) | Medium | Medium | Loop over a list from the choice argument with no length check |
+| [`stale-fetch`](#stale-fetch) | Medium | Medium | Fetched value used after the contract was replaced by a successor |
 
 ### boolean-cst
 
@@ -1972,3 +1973,65 @@ automation, for example `AmuletRules_ClaimExpiredRewards` and
 
 **Recommendation:** check the length first, for example
 `assertMsg "too many" (length payees <= 50)`, or split the work into several transactions.
+
+### stale-fetch
+
+**Fetched value used after the contract was replaced by a successor.** It reports a choice
+that fetches a contract, then exercises a consuming choice on the same contract id that
+returns a new `ContractId` of the same template, and uses the fetched value after that.
+
+**Impact:** the fetched value describes the version that was just archived. After a choice
+such as `Withdraw` the real state lives in the successor, so amounts or parties taken from
+the fetched value are out of date.
+
+**Example** (`examples/vulnerable/stale-fetch/daml/Main.daml`):
+
+```haskell
+    nonconsuming choice PayOut : ContractId Receipt
+      with
+        cid : ContractId Account
+      controller owner
+      do
+        acc <- fetch cid
+        _ <- exercise cid Withdraw with amt = 10.0
+        create Receipt with bank; owner; remaining = acc.amount
+
+    nonconsuming choice Merge : ContractId Account
+      with
+        cid : ContractId Account
+        other : ContractId Account
+      controller owner
+      do
+        acc <- fetch other
+        archive other
+        exercise cid Withdraw with amt = negate acc.amount
+```
+
+```text
+$ damlisk scan examples/vulnerable/stale-fetch/stale-fetch.dar --detect stale-fetch
+[Medium] stale-fetch Main.daml:29
+    Main:Desk.PayOut: `acc` is used after `Withdraw`
+[Medium] stale-fetch Main.daml:38
+    Main:Desk.PayTwice: `acc` is used after `Withdraw`
+2 finding(s).
+```
+
+`Merge` (fetch, `Archive`, then use of the fetched value, the usual merge pattern),
+`Refresh` (fetches the successor), `ReadFirst` (computes the new value before the exercise)
+and `Look` (a nonconsuming choice) are not reported.
+
+**How it works:** in each `do` block of the choice and of the package helpers it calls, the
+detector pairs `x <- fetch cid` with a later `exercise cid C` on the same variable or
+`record.field`, also when damlc compiles them to helpers that take the contract id. It
+reports when `C` is consuming, is not `Archive`, returns a `ContractId` of the same template
+(also inside a list, `Optional` or tuple), and `x` is mentioned after the exercise. The doc's
+rule also covers `Archive`; it is left out because fetch, archive, then use is how contracts
+are merged and is correct. A fetch through a wrapper that does more than fetch, such as
+Splice's `fetchChecked`, is not recognised, and values derived from `x` before the exercise
+are not followed.
+
+**Results on real code:** no findings on `splice-amulet`, `splice-wallet-payments` or
+`splice-util`.
+
+**Recommendation:** fetch the successor contract id the choice returns, or compute the new
+values before the exercise.

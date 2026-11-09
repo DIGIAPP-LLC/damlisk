@@ -1,0 +1,93 @@
+module Main where
+
+template Account
+  with
+    bank : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory bank, owner
+
+    choice Withdraw : ContractId Account
+      with
+        amt : Decimal
+      controller owner
+      do create this with amount = amount - amt
+
+    nonconsuming choice Peek : Decimal
+      controller owner
+      do pure amount
+
+template Desk
+  with
+    bank : Party
+    owner : Party
+  where
+    signatory bank
+    observer owner
+
+    nonconsuming choice PayOut : ContractId Receipt
+      with
+        cid : ContractId Account
+      controller owner
+      do
+        acc <- fetch cid
+        _ <- exercise cid Withdraw with amt = 10.0
+        create Receipt with bank; owner; remaining = acc.amount
+
+    nonconsuming choice PayTwice : ContractId Receipt
+      with
+        cid : ContractId Account
+      controller owner
+      do
+        acc <- fetch cid
+        next <- exercise cid Withdraw with amt = 10.0
+        _ <- exercise next Withdraw with amt = acc.amount
+        create Receipt with bank; owner; remaining = 0.0
+
+    nonconsuming choice Merge : ContractId Account
+      with
+        cid : ContractId Account
+        other : ContractId Account
+      controller owner
+      do
+        acc <- fetch other
+        archive other
+        exercise cid Withdraw with amt = negate acc.amount
+
+    nonconsuming choice Refresh : ContractId Receipt
+      with
+        cid : ContractId Account
+      controller owner
+      do
+        newCid <- exercise cid Withdraw with amt = 10.0
+        acc <- fetch newCid
+        create Receipt with bank; owner; remaining = acc.amount
+
+    nonconsuming choice ReadFirst : ContractId Receipt
+      with
+        cid : ContractId Account
+      controller owner
+      do
+        acc <- fetch cid
+        let left = acc.amount - 10.0
+        _ <- exercise cid Withdraw with amt = 10.0
+        create Receipt with bank; owner; remaining = left
+
+    nonconsuming choice Look : ContractId Receipt
+      with
+        cid : ContractId Account
+      controller owner
+      do
+        acc <- fetch cid
+        _ <- exercise cid Peek
+        create Receipt with bank; owner; remaining = acc.amount
+
+template Receipt
+  with
+    bank : Party
+    owner : Party
+    remaining : Decimal
+  where
+    signatory bank
+    observer owner
