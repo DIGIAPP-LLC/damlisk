@@ -65,6 +65,11 @@ LOOPS = {
     "foldrA",
 }
 STD_PREFIX = ("DA.", "GHC.")
+LENGTHS = {
+    ("DA.Internal.Prelude", "length"),
+    ("DA.Foldable", "length"),
+    ("DA.Foldable", "$dmlength"),
+}
 LOOKUP_OPS = {"GENMAP_LOOKUP": "lookup", "TEXTMAP_LOOKUP": "lookup"}
 MEMBERSHIP = {
     ("DA.Internal.Prelude", "elem"),
@@ -367,6 +372,14 @@ def loop_name(fun: lf.Expr) -> str | None:
     module, name = qual_name(fun.val)
     if name in LOOPS and module.startswith(STD_PREFIX):
         return name
+    return None
+
+
+def length_name(fun: lf.Expr) -> str | None:
+    """Return `length` if `fun` counts the elements of a list, or None."""
+    fun = untyped(fun)
+    if fun.val is not None and qual_name(fun.val) in LENGTHS:
+        return "length"
     return None
 
 

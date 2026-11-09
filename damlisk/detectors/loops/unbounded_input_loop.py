@@ -1,6 +1,7 @@
 from damlisk.detectors.abstract_detector import AbstractDetector
+from damlisk.detectors.loops.ledger_op_in_loop import LoopScan
 from damlisk.lf.builtins import is_list
-from damlisk.lf.flow import FieldFlow
+from damlisk.lf.flow import SIZE, FieldFlow
 from damlisk.lf.index import ChoiceDecl, PackageIndex
 from damlisk.output.finding import Confidence, Finding, Impact
 
@@ -12,11 +13,11 @@ def list_fields(index: PackageIndex, decl: ChoiceDecl) -> set[str]:
 
 
 def unbounded(index: PackageIndex, flow: FieldFlow, decl: ChoiceDecl) -> list[str]:
-    """Return the argument lists that a loop runs over without a length check."""
+    """Return the argument lists that a ledger loop runs over without a `length` check."""
     choice = decl.choice
     usage = flow.loops(choice.update, choice.arg_binder.var)
     fields = usage.looped & list_fields(index, decl)
-    return sorted(fields - usage.ordered)
+    return sorted(name for name in fields if SIZE + name not in usage.ordered)
 
 
 class UnboundedInputLoop(AbstractDetector):
@@ -26,8 +27,9 @@ class UnboundedInputLoop(AbstractDetector):
     CONFIDENCE = Confidence.MEDIUM
     WIKI_TITLE = "Unbounded input loop"
     WIKI_DESCRIPTION = (
-        "A choice runs `forA`, `mapA`, `foldl` or a similar loop over a list that comes from "
-        "the choice argument, and nothing compares the length of that list with a limit. "
+        "A choice runs `create`, `exercise` or `fetch` inside `forA`, `mapA`, `foldl` or a "
+        "similar loop over a list that comes from the choice argument, and nothing compares "
+        "`length` of that list with a limit. "
         "The submitter decides how many iterations run, so the transaction can grow past "
         "the limits of the ledger."
     )
@@ -42,8 +44,9 @@ class UnboundedInputLoop(AbstractDetector):
     )
 
     def _detect(self) -> list[Finding]:
-        """Report each choice that loops over an argument list with no length check."""
-        flow = FieldFlow(self.index.values)
+        """Report each choice whose ledger loop runs over an unchecked argument list."""
+        scan = LoopScan(self.index.values)
+        flow = FieldFlow(self.index.values, lengths=True, ledger=scan.ops)
         findings = []
         decls = self.index.choices()
         for decl in decls:

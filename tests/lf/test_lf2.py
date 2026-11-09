@@ -19,6 +19,7 @@ from damlisk.lf.builtins import (
     is_party,
     is_time,
     join_name,
+    length_name,
     lf_name,
     lookup_name,
     loop_name,
@@ -570,3 +571,17 @@ def _prim(prim, *args):
 )
 def test_is_list(typ, expected):
     assert is_list(typ) is expected
+
+
+@pytest.mark.parametrize(
+    "fun,expected",
+    [
+        (_val("DA.Internal.Prelude", "length"), "length"),
+        (_val("DA.Foldable", "$$dmlength"), "length"),
+        (_val("DA.Text", "length"), None),
+        (lf.Expr(var="n"), None),
+    ],
+    ids=["prelude", "foldable-default", "text-length", "var"],
+)
+def test_length_name(fun, expected):
+    assert length_name(fun) == expected

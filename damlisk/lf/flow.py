@@ -7,6 +7,7 @@ from damlisk.lf.builtins import (
     compare_name,
     hash_name,
     index_name,
+    length_name,
     lookup_name,
     loop_name,
     order_name,
@@ -20,10 +21,12 @@ WHOLE = frozenset({"*"})
 THIS = "@this"
 CLOCK = "@now"
 HASH = "@hash"
+SIZE = "#len:"
 Aliases = dict[str, frozenset[str]]
 Visited = frozenset[lf.ValName]
 Node = lf.Expr | lf.Update
 Probe = Callable[[lf.Expr], str | None]
+Effects = Callable[[lf.Expr], set[str]]
 
 
 @dataclass(frozen=True)
@@ -173,16 +176,26 @@ class Helper:
 
 class FieldFlow:
     def __init__(
-        self, values: dict[lf.ValName, lf.DefValue], clock: bool = False, hashes: bool = False
+        self,
+        values: dict[lf.ValName, lf.DefValue],
+        clock: bool = False,
+        hashes: bool = False,
+        lengths: bool = False,
+        ledger: Effects | None = None,
     ) -> None:
         """Remember all package values, so calls to compiler helpers can be followed.
 
         With `clock`, a variable bound to the ledger time carries the `CLOCK` field; with
-        `hashes`, the result of `sha256` or `keccak256` carries the `HASH` field.
+        `hashes`, the result of `sha256` or `keccak256` carries the `HASH` field; with
+        `lengths`, `length xs` carries `SIZE` + each field of `xs` instead of the fields.
+        With `ledger`, a loop counts in `looped` only if `ledger` finds a ledger operation
+        in one of its arguments.
         """
         self.values = values
         self.clock = clock
         self.hashes = hashes
+        self.lengths = lengths
+        self.ledger = ledger
 
     def fields(self, expr: lf.Expr, var: str) -> set[str]:
         """Return the fields of record variable `var` that `expr` uses."""
@@ -373,13 +386,17 @@ class FieldFlow:
                 usage.indexed |= arg.fields
             if lookup is not None:
                 usage.keyed |= arg.fields
-        if loop is not None:
+        if loop is not None and self.effectful(call):
             usage.looped |= loop_source(loop, args)
         if comparison is not None:
             usage.linked |= linked_fields(args)
         usage.merge(self.trace_callbacks(call, args, aliases, visited))
         if self.hashes and self.resolve(call.fun, hash_name) is not None:
             usage.fields.add(HASH)
+        if self.lengths and self.resolve(call.fun, length_name) is not None:
+            for arg in args:
+                usage.fields |= {SIZE + name for name in arg.fields}
+            return usage
         helper = self.helper(call.fun, visited)
         if helper is None:
             usage.merge(self.trace(call.fun, aliases, visited))
@@ -423,6 +440,15 @@ class FieldFlow:
                 scope[params[0]] = frozenset(inputs)
                 usage.merge(self.trace(callback.body, scope, callback.visited(visited)))
         return usage
+
+    def effectful(self, call: lf.Expr.App) -> bool:
+        """Return True if a loop call runs a ledger operation, or if `ledger` is not set."""
+        if self.ledger is None:
+            return True
+        for arg in call.args:
+            if self.ledger(arg):
+                return True
+        return False
 
     def callback(self, arg: lf.Expr, visited: Visited) -> Helper | None:
         """Return `arg` as a callback: a lambda, or a helper that runs a ledger action."""

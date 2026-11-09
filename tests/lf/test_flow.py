@@ -4,6 +4,7 @@ from dazl.damlast import daml_lf_1 as lf
 from damlisk.lf.flow import (
     CLOCK,
     HASH,
+    SIZE,
     THIS,
     Assign,
     FieldFlow,
@@ -543,13 +544,29 @@ def test_loop_source(loop, args, expected):
                 app(FOR_ALL, proj("arg", "xs"), BODY),
             ),
             {"xs"},
-            {"xs"},
+            {SIZE + "xs"},
         ),
+        (app(GE, app(val("sum"), proj("arg", "xs")), var("cap")), set(), {"xs"}),
         (app(val("show"), proj("arg", "xs")), set(), set()),
     ],
-    ids=["for-loop", "fold-loop", "length-guard", "no-loop"],
+    ids=["for-loop", "fold-loop", "length-guard", "sum-compare", "no-loop"],
 )
 def test_loops(expr, looped, ordered):
-    usage = FieldFlow({}).loops(expr, "arg")
+    usage = FieldFlow({}, lengths=True).loops(expr, "arg")
 
     assert (usage.looped, usage.ordered) == (looped, ordered)
+
+
+def found_ops(expr):
+    return {"create"} if expr.abs is not None else set()
+
+
+@pytest.mark.parametrize(
+    "ledger,expected",
+    [(None, {"xs"}), (found_ops, {"xs"}), (lambda expr: set(), set())],
+    ids=["no-probe", "ledger-callback", "pure-callback"],
+)
+def test_effectful_loops(ledger, expected):
+    flow = FieldFlow({}, ledger=ledger)
+
+    assert flow.loops(app(FOR_ALL, proj("arg", "xs"), BODY), "arg").looped == expected

@@ -65,6 +65,14 @@ template Treasury
       controller owner
       do pure (foldl (+) 0.0 amounts)
 
+    nonconsuming choice PayNonEmpty : ()
+      with
+        payees : [(Party, Decimal)]
+      controller owner
+      do
+        assertMsg "no payees" (not (null payees))
+        forA_ payees \(p, a) -> exercise cashCid Pay with to = p; amt = a
+
 template Item
   with
     owner : Party

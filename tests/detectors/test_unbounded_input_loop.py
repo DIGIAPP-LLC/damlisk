@@ -1,5 +1,6 @@
 import pytest
 
+from damlisk.detectors.loops.ledger_op_in_loop import LoopScan
 from damlisk.detectors.loops.unbounded_input_loop import UnboundedInputLoop, list_fields, unbounded
 from damlisk.lf.dar import Dar
 from damlisk.lf.flow import FieldFlow
@@ -17,14 +18,24 @@ def decl_of(index, choice):
         ("Treasury.PayAll", ["payees"]),
         ("Treasury.PayByHelper", ["payees"]),
         ("Treasury.MintAll", ["names"]),
-        ("Treasury.Total", ["amounts"]),
+        ("Treasury.PayNonEmpty", ["payees"]),
+        ("Treasury.Total", []),
         ("Treasury.PayCapped", []),
         ("Treasury.PayMembers", []),
     ],
-    ids=["for-loop", "helper-loop", "map-loop", "pure-fold", "length-checked", "template-list"],
+    ids=[
+        "for-loop",
+        "helper-loop",
+        "map-loop",
+        "null-check-only",
+        "pure-fold",
+        "length-checked",
+        "template-list",
+    ],
 )
 def test_unbounded(unbounded_index, choice, expected):
-    flow = FieldFlow(unbounded_index.values)
+    scan = LoopScan(unbounded_index.values)
+    flow = FieldFlow(unbounded_index.values, lengths=True, ledger=scan.ops)
 
     assert unbounded(unbounded_index, flow, decl_of(unbounded_index, choice)) == expected
 
@@ -46,7 +57,7 @@ def test_detector_reports_example_violations(unbounded_index):
         ("Main:Treasury.MintAll", 42),
         ("Main:Treasury.PayAll", 30),
         ("Main:Treasury.PayByHelper", 36),
-        ("Main:Treasury.Total", 62),
+        ("Main:Treasury.PayNonEmpty", 68),
     ]
 
 

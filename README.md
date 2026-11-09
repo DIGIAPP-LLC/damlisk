@@ -1914,10 +1914,10 @@ item so a single failure only affects that item.
 
 ### unbounded-input-loop
 
-**Loop over a list from the choice argument with no length check.** It reports a choice
-that runs `forA`, `mapA`, `foldl` or another loop from [`ledger-op-in-loop`](#ledger-op-in-loop)
-over a list field of its argument, when nothing compares a value computed from that list with
-`<`, `<=`, `>` or `>=`.
+**Loop over a list from the choice argument with no length check.** It reports a choice that
+runs `create`, `exercise` or `fetch` inside `forA`, `mapA`, `foldl` or another loop from
+[`ledger-op-in-loop`](#ledger-op-in-loop) over a list field of its argument, when nothing
+compares `length` of that list with `<`, `<=`, `>` or `>=`.
 
 **Impact:** the submitter decides how many iterations run. A long list makes the transaction
 too large to commit, or creates that many contracts under the signatories' authority.
@@ -1948,22 +1948,22 @@ $ damlisk scan examples/vulnerable/unbounded-input-loop/unbounded-input-loop.dar
     Main:Treasury.PayAll: loop over argument `payees` with no length check
 [Medium] unbounded-input-loop Main.daml:36
     Main:Treasury.PayByHelper: loop over argument `payees` with no length check
-[Medium] unbounded-input-loop Main.daml:62
-    Main:Treasury.Total: loop over argument `amounts` with no length check
+[Medium] unbounded-input-loop Main.daml:68
+    Main:Treasury.PayNonEmpty: loop over argument `payees` with no length check
 4 finding(s).
 ```
 
-`PayCapped` (the length is checked) and `PayMembers` (the list is a template field) are not
-reported. `Total` is a pure `foldl` and is reported, because the rule covers every fold over
-an argument list.
+`PayNonEmpty` is reported because `not (null payees)` only rules out an empty list. `PayCapped`
+(the length is checked), `PayMembers` (the list is a template field) and `Total` (a pure
+`foldl` with no ledger operation) are not reported.
 
 **How it works:** the detector follows the argument fields through `let`, package helpers and
 library calls to the list a loop runs over: the list before the callback for `forA` and
 `forM`, the last argument for `mapA` and the folds. Only fields of type `[a]` or
-`Optional [a]` count. Any ordering comparison on a value computed from the list counts as a
-length check, so a list whose `length` only feeds a calculation that is later compared is
-not reported. Lists nested inside a record of the argument, such as `transfer.inputs`, are
-not followed.
+`Optional [a]` count, and only loops whose callback runs a ledger operation. A length check
+is an ordering comparison on `length xs`, also after arithmetic such as
+`length xs * fee < cap`; a comparison on the elements or on `sum xs` does not count. Lists
+nested inside a record of the argument, such as `transfer.inputs`, are not followed.
 
 **Results on real code:** `splice-amulet` 0.1.24 has 10 findings, 0.1.19 has 9 and 0.1.14 has
 3; all are DSO choices that process a list of coupons or contracts passed by the DSO
