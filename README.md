@@ -6,7 +6,8 @@
 
 **Static analyzer for Daml smart contracts.**
 
-[![CI](https://github.com/DIGIAPP-LLC/daml-scanner/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/damlisk)](https://pypi.org/project/damlisk/)
+[![CI](https://github.com/DIGIAPP-LLC/damlisk/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](setup.py)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
@@ -24,7 +25,7 @@ compiled is what gets checked.
 **1. Install damlisk** (Python 3.11 or newer):
 
 ```bash
-make dev-init
+pip install damlisk
 ```
 
 **2. Build your Daml project** with `dpm build`. This choice uses a fetched value after its
@@ -163,6 +164,18 @@ tests. Run it locally with:
 
 ```bash
 nix develop --command make ci
+```
+
+## Publishing to PyPI
+
+Pushing a `v*.*.*` tag runs [`.github/workflows/workflow.yml`](.github/workflows/workflow.yml).
+It builds the sdist and wheel with the tag as the version (`v0.2.0` gives `damlisk --version`
+= `0.2.0`), checks that, and uploads to PyPI through trusted publishing, so no API token is
+stored in the repository:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ## License
