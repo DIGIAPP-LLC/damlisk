@@ -134,8 +134,9 @@ damlisk scan path/to/project.dar     # run all detectors on the main package
 
 [`examples/vulnerable/`](examples/vulnerable) has one small Daml project per detector. Each
 holds the cases that are reported and the look-alikes that are not, with a built `.dar` next
-to it. [`examples/dars/`](examples/dars) holds Splice DARs used as a real-world baseline in
-the tests.
+to it. `examples/dars/` holds the Splice DARs used as a real-world baseline in the tests. It
+is not committed: `make dars` downloads every published version from the official
+[Splice repository](https://github.com/canton-network/splice/tree/main/daml/dars).
 
 ## Local development
 
@@ -143,6 +144,7 @@ the tests.
 python -m venv .venv
 source .venv/bin/activate
 make dev-init        # editable install with the dev dependency group
+make dars            # download all Splice DARs into examples/dars
 ```
 
 Run the tests and linters, and build the wheel:

@@ -1,13 +1,19 @@
 VERSION ?= 0.0.1
 PYTHON ?= python3
 
-.PHONY: init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
+DARS_REF ?= main
+DARS_ONLY ?=
+
+.PHONY: dars init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
 
 init:
 	$(PYTHON) setup.py install
 
 dev-init:
 	$(PYTHON) -m pip install -e . --group dev
+
+dars:
+	$(PYTHON) scripts/fetch_dars.py --out examples/dars --ref $(DARS_REF) --only "$(DARS_ONLY)"
 
 test:
 	pytest

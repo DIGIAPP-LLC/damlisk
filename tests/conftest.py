@@ -6,7 +6,27 @@ from damlisk.lf.dar import Dar
 from damlisk.lf.index import PackageIndex
 
 ROOT = Path(__file__).parent.parent
-SPLICE_DARS = sorted((ROOT / "examples" / "dars").glob("*.dar"))
+BASELINE = (
+    "splice-amulet-0.1.14",
+    "splice-amulet-0.1.19",
+    "splice-amulet-0.1.24",
+    "splice-api-featured-app-v1-1.0.0",
+    "splice-api-featured-app-v2-1.0.0",
+    "splice-api-reward-assignment-v1-1.0.0",
+    "splice-api-token-allocation-instruction-v1-1.0.0",
+    "splice-api-token-allocation-instruction-v2-1.0.0",
+    "splice-api-token-allocation-request-v2-1.0.0",
+    "splice-api-token-allocation-v1-1.0.0",
+    "splice-api-token-allocation-v2-1.0.0",
+    "splice-api-token-holding-v1-1.0.0",
+    "splice-api-token-metadata-v1-1.0.0",
+    "splice-api-token-transfer-instruction-v1-1.0.0",
+    "splice-api-token-transfer-instruction-v2-1.0.0",
+    "splice-token-standard-utils-2.0.0",
+    "splice-util-0.1.8",
+    "splice-wallet-payments-0.1.24",
+)
+SPLICE_DARS = [ROOT / "examples" / "dars" / f"{name}.dar" for name in BASELINE]
 AMULET_DAR = ROOT / "examples" / "dars" / "splice-amulet-0.1.24.dar"
 BOOL_DAR = ROOT / "examples" / "vulnerable" / "boolean-cst" / "boolean-cst.dar"
 EQ_DAR = ROOT / "examples" / "vulnerable" / "boolean-equal" / "boolean-equal.dar"
