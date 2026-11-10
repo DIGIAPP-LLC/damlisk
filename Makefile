@@ -3,6 +3,7 @@ PYTHON ?= python3
 
 DARS_REF ?= main
 DARS_ONLY ?=
+DPM ?= $(shell command -v dpm || echo $(HOME)/.dpm/bin/dpm)
 
 .PHONY: dars init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
 
@@ -14,6 +15,12 @@ dev-init:
 
 dars:
 	$(PYTHON) scripts/fetch_dars.py --out examples/dars --ref $(DARS_REF) --only "$(DARS_ONLY)"
+	@for dir in examples/vulnerable/*/; do \
+		name=$$(basename $$dir); \
+		echo "building $$name"; \
+		log=$$(cd $$dir && $(DPM) build -o $$name.dar 2>&1) || { echo "$$log"; exit 1; }; \
+		rm -rf $$dir.daml; \
+	done
 
 test:
 	pytest

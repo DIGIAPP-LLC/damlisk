@@ -33,6 +33,7 @@ damlisk/damlisk_git_commithash.txt
 
 examples/**/.daml/
 examples/dars/
+examples/vulnerable/**/*.dar
 .claude/*
 *.puml
 checks-feasibility.md
