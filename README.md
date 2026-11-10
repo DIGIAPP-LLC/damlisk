@@ -182,3 +182,5 @@ git push origin v0.2.0
 ## License
 
 damlisk is licensed under the [Apache License, Version 2.0](LICENSE).
+
+Copyright 2026 DIGIAPP LLC.

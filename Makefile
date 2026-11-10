@@ -6,8 +6,9 @@ DARS_ONLY ?=
 DPM ?= $(shell command -v dpm || echo $(HOME)/.dpm/bin/dpm)
 DAML_SDK ?= 3.4.8
 VENV ?= .venv
+LICENSE_MARKER := Licensed under the Apache License, Version 2.0
 
-.PHONY: ci dpm dars init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
+.PHONY: ci dpm dars license-check init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
 
 init:
 	$(PYTHON) setup.py install
@@ -20,6 +21,7 @@ ci:
 	$(VENV)/bin/pip install -q -U pip
 	$(VENV)/bin/pip install -q -e . --group dev
 	$(MAKE) dpm dars PYTHON=$(VENV)/bin/python
+	$(MAKE) license-check
 	PATH="$(CURDIR)/$(VENV)/bin:$$PATH" $(MAKE) lint test
 	git diff --exit-code -- damlisk tests setup.py
 
@@ -35,6 +37,15 @@ dars:
 		log=$$(cd $$dir && $(DPM) build -o $$name.dar 2>&1) || { echo "$$log"; exit 1; }; \
 		rm -rf $$dir.daml; \
 	done
+
+license-check:
+	@missing=$$(git ls-files --cached --others --exclude-standard -- setup.py 'damlisk/*.py' 'tests/*.py' 'scripts/*.py' \
+		| grep -v '^damlisk/version.py$$' \
+		| while read -r file; do head -n 20 "$$file" | grep -q "$(LICENSE_MARKER)" || echo "$$file"; done); \
+	if [ -n "$$missing" ]; then \
+		echo "Missing Apache-2.0 license header:"; echo "$$missing"; exit 1; \
+	fi; \
+	echo "All Python files have the Apache-2.0 license header."
 
 test:
 	pytest
