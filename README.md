@@ -169,7 +169,8 @@ nix develop --command make ci
 ## Publishing to PyPI
 
 Pushing a `v*.*.*` tag runs [`.github/workflows/workflow.yml`](.github/workflows/workflow.yml).
-It builds the sdist and wheel with the tag as the version (`v0.2.0` gives `damlisk --version`
+It first runs the CI workflow (DAR builds, lint, tests); only if that passes does it build
+the sdist and wheel with the tag as the version (`v0.2.0` gives `damlisk --version`
 = `0.2.0`), checks that, and uploads to PyPI through trusted publishing, so no API token is
 stored in the repository:
 
