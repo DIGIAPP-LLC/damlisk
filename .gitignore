@@ -33,3 +33,5 @@ damlisk/damlisk_git_commithash.txt
 
 examples/**/.daml/
 .claude/*
+*.puml
+checks-feasibility.md
