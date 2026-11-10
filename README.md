@@ -120,7 +120,18 @@ damlisk --version                    # installed version
 damlisk list-detectors               # every detector with impact and confidence
 damlisk info path/to/project.dar     # packages, Daml-LF versions and declarations
 damlisk scan path/to/project.dar     # run all detectors on the main package
+damlisk report examples/dars --name digitalasset   # Markdown report for many DARs
 ```
+
+`report` takes DAR files and folders (searched recursively) and writes a summary page with
+one row per DAR, linking to a page with that DAR's findings:
+
+```text
+reports/digitalasset/report-2026-11-10.md
+reports/digitalasset/report-2026-11-10/splice-amulet-0.1.24.md
+```
+
+It also takes `--out` (default `reports`), `--date` (default today), `--detect` and `--exclude`.
 
 `scan` options:
 

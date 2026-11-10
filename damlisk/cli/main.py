@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import sys
+from datetime import date
 from pathlib import Path
 
 import click
@@ -26,6 +27,7 @@ from damlisk.lf.dar import Dar
 from damlisk.lf.index import PackageIndex
 from damlisk.output.finding import Finding, Impact
 from damlisk.output.formats import render_json, render_text
+from damlisk.output.report import DarReport, Report, dar_paths, run_detectors
 
 _TRACEBACK = click.option(
     "--traceback", is_flag=True, help="Show a Python traceback on error instead of a short message."
@@ -99,16 +101,48 @@ def scan_cmd(
     """Run detectors over the main package of DAR_PATH."""
     detectors = select_detectors(detect, exclude)
     index = PackageIndex(_load(dar_path, traceback))
-    findings: list[Finding] = []
-    for det in detectors:
-        found = det(index).detect()
-        findings.extend(found)
+    findings = run_detectors(index, detectors)
     if as_json or pretty:
         click.echo(render_json(findings, pretty))
     else:
         click.echo(render_text(findings))
     if _fails(findings, fail_on):
         sys.exit(1)
+
+
+@cli.command("report")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+@click.option("--name", required=True, help="Report name and folder, e.g. digitalasset.")
+@click.option(
+    "--out",
+    default="reports",
+    show_default=True,
+    type=click.Path(path_type=Path),
+    help="Folder that holds the report folders.",
+)
+@click.option("--date", "day", default=None, help="Report date (default: today, YYYY-MM-DD).")
+@click.option("--detect", default=None, help="Comma-separated detectors to run (default: all).")
+@click.option("--exclude", default=None, help="Comma-separated detectors to skip.")
+def report_cmd(
+    paths: tuple[Path, ...],
+    name: str,
+    out: Path,
+    day: str | None,
+    detect: str | None,
+    exclude: str | None,
+) -> None:
+    """Scan every DAR in PATHS (files or folders) and write a Markdown report."""
+    detectors = select_detectors(detect, exclude)
+    found = dar_paths(list(paths))
+    if not found:
+        raise click.BadParameter("no .dar files found", param_hint="PATHS")
+    dars = []
+    for pos, path in enumerate(found, 1):
+        click.echo(f"[{pos}/{len(found)}] {path.name}", err=True)
+        dars.append(DarReport.scan(path, detectors))
+    report = Report(name, day or date.today().isoformat(), dars)
+    summary = report.write(out)
+    click.echo(f"Wrote {summary}")
 
 
 @cli.command("info")
