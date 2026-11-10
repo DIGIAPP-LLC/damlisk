@@ -6,6 +6,7 @@
 
 **Static analyzer for Daml smart contracts.**
 
+[![CI](https://github.com/DIGIAPP-LLC/daml-scanner/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](setup.py)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
@@ -153,6 +154,15 @@ Run the tests and linters, and build the wheel:
 make test            # pytest
 make lint            # mypy, black, flake8, isort
 make build           # dist/damlisk-<version>-py3-none-any.whl
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) is started by hand from the Actions
+tab (**Run workflow**). It runs the same steps inside the Nix dev shell from
+[`flake.nix`](flake.nix): it installs dpm and the Daml SDK, runs `make dars`, then lint and
+tests. Run it locally with:
+
+```bash
+nix develop --command make ci
 ```
 
 ## License

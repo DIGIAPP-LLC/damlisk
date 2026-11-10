@@ -4,14 +4,28 @@ PYTHON ?= python3
 DARS_REF ?= main
 DARS_ONLY ?=
 DPM ?= $(shell command -v dpm || echo $(HOME)/.dpm/bin/dpm)
+DAML_SDK ?= 3.4.8
+VENV ?= .venv
 
-.PHONY: dars init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
+.PHONY: ci dpm dars init dev-init test lint mypy black flake8 isort build dev dev-release release clean clean-pyc clean-build clean-test
 
 init:
 	$(PYTHON) setup.py install
 
 dev-init:
 	$(PYTHON) -m pip install -e . --group dev
+
+ci:
+	$(PYTHON) -m venv $(VENV)
+	$(VENV)/bin/pip install -q -U pip
+	$(VENV)/bin/pip install -q -e . --group dev
+	$(MAKE) dpm dars PYTHON=$(VENV)/bin/python
+	PATH="$(CURDIR)/$(VENV)/bin:$$PATH" $(MAKE) lint test
+	git diff --exit-code -- damlisk tests setup.py
+
+dpm:
+	[ -x "$(DPM)" ] || curl -sSL https://get.digitalasset.com/install/install.sh | sh
+	$(DPM) install $(DAML_SDK)
 
 dars:
 	$(PYTHON) scripts/fetch_dars.py --out examples/dars --ref $(DARS_REF) --only "$(DARS_ONLY)"

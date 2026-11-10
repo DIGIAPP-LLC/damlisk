@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.dpm
+            examples/dars
+          key: dars-${{ runner.os }}-${{ hashFiles('Makefile', 'scripts/fetch_dars.py') }}
+          restore-keys: dars-${{ runner.os }}-
+
+      - name: Build DARs, lint and test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: nix develop --command make ci

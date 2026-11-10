@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import shutil
 import ssl
 import sys
@@ -27,7 +28,11 @@ class Dar:
 
 def list_dars(ref: str) -> list[Dar]:
     """Return every DAR published in the Splice repository at `ref`."""
-    with urllib.request.urlopen(f"{API}?ref={ref}", context=TLS) as resp:
+    req = urllib.request.Request(f"{API}?ref={ref}")
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, context=TLS) as resp:
         items = json.load(resp)
     dars = []
     for item in items:
